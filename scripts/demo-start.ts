@@ -52,7 +52,7 @@ for (const { name, child } of children) {
       buf += d.toString();
       const lines = buf.split(/\r?\n/);
       buf = lines.pop() ?? '';
-      for (const l of lines) if (l.trim()) console.log(`[${name}] ${l}`);
+      for (const l of lines) if (l.trim()) console.log(l.startsWith(`[${name}]`) ? l : `[${name}] ${l}`);
     });
   }
   child.on('exit', (code) => {
