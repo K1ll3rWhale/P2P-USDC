@@ -13,7 +13,13 @@
     "demo:accounts": "tsx scripts/create-demo-accounts.ts",
     "worker": "tsx scripts/worker.ts",
     "fund:demo": "tsx scripts/fund-demo-accounts.ts",
-    "test": "node --import tsx --test tests/*.test.ts"
+    "test": "node --import tsx --test tests/*.test.ts",
+    "intents:status": "tsx scripts/intents.ts status",
+    "intents:resolve": "tsx scripts/intents.ts resolve",
+    "demo:start": "tsx scripts/demo-start.ts",
+    "demo:status": "tsx scripts/demo-status.ts",
+    "demo:prepare": "tsx scripts/demo-prepare.ts",
+    "security:check": "tsx scripts/security-check.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.2.2",

@@ -5,6 +5,7 @@ import { CHAIN_ID } from './chain';
 import { db } from './db';
 import { users, wallets } from './db/schema';
 import { getWalletAdapter } from './wallet-adapter';
+import type { WalletAdapter } from './wallet-adapter/types';
 
 const LEASE_MS = 60_000;
 const USER_ERROR = 'Wallet setup did not finish. Please try again.';
@@ -15,7 +16,10 @@ export type ProvisionResult = { ok: true } | { ok: false; error: string };
  * Idempotent and retryable. Reuses an existing remote wallet (looked up by the user ID as external ID)
  * before creating one, and marks the user active only once the wallet row is saved.
  */
-export async function provisionWallet(userId: string): Promise<ProvisionResult> {
+export async function provisionWallet(
+  userId: string,
+  adapter: Pick<WalletAdapter, 'provider' | 'createWallet' | 'findWalletByExternalId'> = getWalletAdapter(),
+): Promise<ProvisionResult> {
   const user = db.select().from(users).where(eq(users.id, userId)).get();
   if (!user) return { ok: false, error: 'Account not found.' };
   const existing = db.select().from(wallets).where(eq(wallets.userId, userId)).get();
@@ -31,7 +35,6 @@ export async function provisionWallet(userId: string): Promise<ProvisionResult> 
   if (claim.changes === 0) return { ok: false, error: 'Wallet setup is already in progress. Try again shortly.' };
 
   try {
-    const adapter = getWalletAdapter();
     let w = await adapter.findWalletByExternalId(userId);
     if (!w) {
       try {

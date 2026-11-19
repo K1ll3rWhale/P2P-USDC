@@ -163,3 +163,85 @@ async function resolveOne(reader: ChainReader, p: Intent, head: number, confirma
   claimTransfer({ id: p.id, txHash, fromAddress: p.fromAddress, toAddress: p.toAddress, amountRaw: p.amountRaw });
   return 'confirmed';
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Recovery tooling support (scripts/intents.ts). Nothing here ever resubmits a transfer.
+// ---------------------------------------------------------------------------------------------------------------
+
+export interface IntentInspection {
+  intentId: string;
+  status: Intent['status'];
+  ageMs: number;
+  searchedFrom: number;
+  searchedTo: number;
+  userOpHash: string | null;
+  userOpEvents: { txHash: string; blockNumber: number; success: boolean }[];
+  transferSearch: { recipient: string; from: string; amountRaw: string };
+  transferMatches: { txHash: string; blockNumber: number }[];
+  candidateTx: string | null; // the transaction that would be verified, if any trace exists
+  receipt: 'none' | 'success' | 'reverted';
+  verification: Verification | null;
+}
+
+/** Read-only: searches the whole range from the intent's start block for any on-chain trace of it. */
+export async function inspectIntent(reader: ChainReader, p: Intent, head: number, deps: { now?: () => number; sleep?: (ms: number) => Promise<void> } = {}): Promise<IntentInspection> {
+  const now = deps.now ?? Date.now;
+  const userOpEvents = p.userOpHash
+    ? await collectLogs(p.startBlock, head, (f, t) => reader.getUserOperationEvents({ userOpHash: p.userOpHash!, fromBlock: f, toBlock: t }), deps.sleep)
+    : [];
+  const taken = new Set(db.select({ h: payments.txHash }).from(payments).where(ne(payments.id, p.id)).all().map((r) => r.h).filter(Boolean));
+  const logs = await collectLogs(p.startBlock, head, (f, t) => reader.getTransferLogs({ fromBlock: f, toBlock: t, recipients: [p.toAddress] }), deps.sleep);
+  const transferMatches = logs
+    .filter((l) => l.from === p.fromAddress && l.value.toString() === p.amountRaw && !taken.has(l.txHash))
+    .map((l) => ({ txHash: l.txHash, blockNumber: l.blockNumber }));
+  const candidateTx = p.txHash ?? userOpEvents[0]?.txHash ?? transferMatches[0]?.txHash ?? null;
+  const receipt = candidateTx ? await reader.getReceipt(candidateTx) : null;
+  return {
+    intentId: p.id,
+    status: p.status,
+    ageMs: now() - p.createdAt,
+    searchedFrom: p.startBlock,
+    searchedTo: head,
+    userOpHash: p.userOpHash,
+    userOpEvents,
+    transferSearch: { recipient: p.toAddress, from: p.fromAddress, amountRaw: p.amountRaw },
+    transferMatches,
+    candidateTx,
+    receipt: receipt ? receipt.status : 'none',
+    verification: receipt ? verifyOutgoing(receipt, p) : null,
+  };
+}
+
+/** Re-runs the normal chain check for one intent (same code path as the worker). */
+export async function resolveIntent(reader: ChainReader, id: string, deps: ResolveDeps = {}): Promise<{ result: 'confirmed' | 'failed' | 'open' | 'not-open' | 'not-found'; head: number }> {
+  const p = db.select().from(payments).where(eq(payments.id, id)).get();
+  if (!p) return { result: 'not-found', head: 0 };
+  if (p.status !== 'created' && p.status !== 'submitted') return { result: 'not-open', head: 0 };
+  const head = await reader.getBlockNumber();
+  return { result: await resolveOne(reader, p, head, deps.confirmations ?? CONFIRMATIONS, deps.now ?? Date.now, deps), head };
+}
+
+export const OPERATOR_FAIL_MIN_AGE_MS = STUCK_AFTER_MS;
+
+export type OperatorFailResult = { ok: true; report: IntentInspection } | { ok: false; reason: string; report?: IntentInspection };
+
+/**
+ * Operator override for an intent with no on-chain trace: marks it failed (which frees the wallet) ONLY IF the
+ * intent is old enough AND the full search finds nothing. It never resubmits. Late landing risk: if the provider
+ * somehow lands it later, the worker will still record the incoming transfer as an unclaimed receipt.
+ */
+export async function operatorFailIntent(reader: ChainReader, id: string, deps: { now?: () => number; sleep?: (ms: number) => Promise<void> } = {}): Promise<OperatorFailResult> {
+  const now = deps.now ?? Date.now;
+  const p = db.select().from(payments).where(eq(payments.id, id)).get();
+  if (!p) return { ok: false, reason: 'No such intent.' };
+  if (p.status !== 'created' && p.status !== 'submitted') return { ok: false, reason: `Intent is already ${p.status}.` };
+  const head = await reader.getBlockNumber();
+  const report = await inspectIntent(reader, p, head, deps);
+  if (report.candidateTx) return { ok: false, report, reason: 'A matching transaction exists on-chain, so it is NOT safe to mark failed. Run intents:resolve without the flag and wait for it to confirm.' };
+  if (report.ageMs < OPERATOR_FAIL_MIN_AGE_MS) return { ok: false, report, reason: 'The intent is younger than 5 minutes. Wait, then check again.' };
+  db.update(payments)
+    .set({ status: 'failed', error: `Marked failed by operator: no matching transaction found on-chain between blocks ${report.searchedFrom} and ${report.searchedTo}.`, resolvedAt: now() })
+    .where(and(eq(payments.id, id), inArray(payments.status, ['created', 'submitted'])))
+    .run();
+  return { ok: true, report };
+}
