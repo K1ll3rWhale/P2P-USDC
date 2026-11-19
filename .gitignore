@@ -9,3 +9,13 @@ build/
 coverage/
 .DS_Store
 Thumbs.db
+scripts/.privy-validate-state.json
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.tsbuildinfo
+next-env.d.ts
