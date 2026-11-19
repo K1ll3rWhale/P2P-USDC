@@ -51,8 +51,12 @@ export async function withBackoff<T>(
 
 const chunk = <T>(a: T[], n: number) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
 
+// Largest range the RPC has accepted so far (e.g. the public Base Sepolia RPC caps eth_getLogs at 200 blocks).
+// Remembered for the life of the process so later passes do not re-learn it with failed calls.
+let rangeCap = Infinity;
+
 async function fetchRange(reader: ChainReader, from: number, head: number, maxRange: number, recipients: string[], sleep: (ms: number) => Promise<void>) {
-  let size = maxRange;
+  let size = Math.min(maxRange, rangeCap);
   for (;;) {
     const to = Math.min(from + size - 1, head);
     try {
@@ -64,6 +68,7 @@ async function fetchRange(reader: ChainReader, from: number, head: number, maxRa
     } catch (e) {
       if (size > 1 && isRangeError(e)) {
         size = Math.max(1, Math.floor(size / 2)); // provider rejected the range: retry smaller
+        rangeCap = size;
         continue;
       }
       throw e;
