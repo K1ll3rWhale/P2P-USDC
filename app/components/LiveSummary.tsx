@@ -38,6 +38,7 @@ export function LiveSummary({ initial, limit, showBalance }: { initial: Summary;
             <>
               <div className="balance">{data.balance.formatted} USDC</div>
               <p className="muted">As of {clock(data.balance.asOf)} · read from Base Sepolia · refreshes every 10 seconds</p>
+              {stale && <p className="error">Could not refresh just now. This balance may be out of date (as of {clock(data.balance.asOf)}).</p>}
             </>
           ) : (
             <p className="error">Balance unavailable right now. Retrying.</p>

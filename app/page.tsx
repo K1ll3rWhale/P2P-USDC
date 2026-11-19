@@ -1,5 +1,6 @@
 import { retryProvisionAction } from './actions';
 import { LiveSummary } from './components/LiveSummary';
+import { SubmitButton } from './components/SubmitButton';
 import { getSummary } from '@/lib/summary';
 import { getWalletFor, requireUser } from '@/lib/session';
 
@@ -14,7 +15,7 @@ export default async function HomePage() {
         <p>Your account exists, but your wallet is not ready yet.</p>
         {user.provisioningError && <p className="error">{user.provisioningError}</p>}
         <form action={retryProvisionAction}>
-          <button type="submit">Retry wallet setup</button>
+          <SubmitButton pendingText="Setting up…">Retry wallet setup</SubmitButton>
         </form>
       </div>
     );

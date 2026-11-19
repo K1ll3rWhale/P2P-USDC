@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { SubmitButton } from '../components/SubmitButton';
 import { acceptRequestAction, cancelRequestAction, declineRequestAction, sendRequestAction } from '../friend-actions';
 import { listFriendships, searchUsers } from '@/lib/friends';
 import { requireUser } from '@/lib/session';
@@ -29,7 +30,7 @@ export default async function FriendsPage({ searchParams }: { searchParams: Prom
               {r.relation === 'none' && (
                 <form action={sendRequestAction}>
                   <input type="hidden" name="username" value={r.username} />
-                  <button type="submit">Add friend</button>
+                  <SubmitButton pendingText="Sending…">Add friend</SubmitButton>
                 </form>
               )}
               {r.relation === 'friends' && <span className="muted">Friends</span>}
@@ -47,8 +48,8 @@ export default async function FriendsPage({ searchParams }: { searchParams: Prom
           {incoming.map((r) => (
             <li key={r.id} className="row">
               <strong style={{ flex: 1 }}>@{r.otherUsername}</strong>
-              <form action={acceptRequestAction}><input type="hidden" name="id" value={r.id} /><button type="submit">Accept</button></form>
-              <form action={declineRequestAction}><input type="hidden" name="id" value={r.id} /><button type="submit" className="secondary">Decline</button></form>
+              <form action={acceptRequestAction}><input type="hidden" name="id" value={r.id} /><SubmitButton>Accept</SubmitButton></form>
+              <form action={declineRequestAction}><input type="hidden" name="id" value={r.id} /><SubmitButton className="secondary">Decline</SubmitButton></form>
             </li>
           ))}
         </ul>
@@ -61,7 +62,7 @@ export default async function FriendsPage({ searchParams }: { searchParams: Prom
           {outgoing.map((r) => (
             <li key={r.id} className="row">
               <strong style={{ flex: 1 }}>@{r.otherUsername}</strong>
-              <form action={cancelRequestAction}><input type="hidden" name="id" value={r.id} /><button type="submit" className="secondary">Cancel</button></form>
+              <form action={cancelRequestAction}><input type="hidden" name="id" value={r.id} /><SubmitButton className="secondary">Cancel</SubmitButton></form>
             </li>
           ))}
         </ul>
