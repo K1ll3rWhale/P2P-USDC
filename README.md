@@ -32,10 +32,10 @@ Friends, Send, Activity and the Home recent list are available once signed in. W
   **estimated** fee (median of recent recorded fees, else 0.003 USDC). The actual fee is recorded after sending.
 - Quotes last 30 seconds and are single-use. Notes are plain text, up to 140 characters. Demo maximum is 100 USDC.
 - Sends go only to accepted friends. One unresolved transfer per wallet at a time (sends and withdrawals together).
-- The worker resolves outgoing transfers from the chain (EntryPoint , then USDC Transfer logs). Keep
-   running or transfers stay pending. Nothing is ever resent automatically; a transfer with no result after
-  5 minutes is shown as taking longer than expected.
-- Live test (needs the app on port 3111 and the worker running): .
+- The worker resolves outgoing transfers from the chain (EntryPoint `UserOperationEvent`, then USDC Transfer logs). Keep
+  `npm run worker` running or transfers stay pending. Nothing is ever resent automatically; a transfer with no result
+  after 5 minutes is shown as taking longer than expected.
+- Live test (needs the app on port 3111 and the worker running): `npx tsx scripts/live-core-test.ts`.
 
 ## Environment variable names (values go in `.env.local`, server-only)
 - `PRIVY_APP_ID`, `PRIVY_APP_SECRET`, `PRIVY_AUTHORIZATION_PRIVATE_KEY`, `PRIVY_AUTHORIZATION_KEY_ID`
