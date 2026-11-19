@@ -44,3 +44,7 @@ button:disabled { opacity: 0.6; cursor: default; }
 .address { font-family: ui-monospace, monospace; word-break: break-all; padding: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; margin: 8px 0; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 ol { padding-left: 20px; }
+ul.list { list-style: none; padding: 0; margin: 12px 0 0; }
+ul.list li { padding: 10px 0; border-top: 1px solid var(--border); }
+ul.list li:first-child { border-top: 0; }
+.row form { margin: 0; }

@@ -1,6 +1,6 @@
-import Link from 'next/link';
 import { retryProvisionAction } from './actions';
-import { getUsdcBalance, type UsdcBalance } from '@/lib/chain';
+import { LiveSummary } from './components/LiveSummary';
+import { getSummary } from '@/lib/summary';
 import { getWalletFor, requireUser } from '@/lib/session';
 
 export default async function HomePage() {
@@ -20,28 +20,6 @@ export default async function HomePage() {
     );
   }
 
-  let balance: UsdcBalance | null = null;
-  try {
-    balance = await getUsdcBalance(wallet.address);
-  } catch (e) {
-    console.error('[home] balance read failed:', e instanceof Error ? e.message : 'unknown');
-  }
-
-  return (
-    <>
-      <div className="card">
-        <h2>USDC balance</h2>
-        {balance ? (
-          <>
-            <div className="balance">{balance.formatted} USDC</div>
-            <p className="muted">As of {new Date(balance.asOf).toISOString().slice(11, 19)} UTC · read from Base Sepolia</p>
-          </>
-        ) : (
-          <p className="error">Balance unavailable right now. Refresh to try again.</p>
-        )}
-        <Link className="btn" href="/wallet#deposit">Deposit</Link>
-      </div>
-      <div className="card muted">Hi @{user.username}. Deposits, friends and sends are not built yet.</div>
-    </>
-  );
+  const initial = await getSummary(user.id, wallet.address, 5);
+  return <LiveSummary initial={initial} limit={5} showBalance />;
 }

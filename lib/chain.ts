@@ -8,7 +8,7 @@ const BALANCE_TTL_MS = 10_000;
 
 export class ChainConfigError extends Error {}
 
-const client = createPublicClient({ transport: http(process.env.BASE_SEPOLIA_RPC_URL?.trim() || DEFAULT_RPC) });
+export const publicClient = createPublicClient({ transport: http(process.env.BASE_SEPOLIA_RPC_URL?.trim() || DEFAULT_RPC) });
 
 const g = globalThis as unknown as {
   __chainOk?: Promise<void>;
@@ -18,11 +18,11 @@ const g = globalThis as unknown as {
 /** Fails closed: throws ChainConfigError on any mismatch. A success is cached; a failure is retried on next use. */
 export function assertChainConfig(): Promise<void> {
   g.__chainOk ??= (async () => {
-    const chainId = await client.getChainId();
+    const chainId = await publicClient.getChainId();
     if (chainId !== CHAIN_ID) throw new ChainConfigError(`RPC chain ID ${chainId} != ${CHAIN_ID}`);
-    const code = await client.getCode({ address: USDC_ADDRESS });
+    const code = await publicClient.getCode({ address: USDC_ADDRESS });
     if (!code || code === '0x') throw new ChainConfigError('No contract at the configured USDC address');
-    const decimals = await client.readContract({ address: USDC_ADDRESS, abi: erc20Abi, functionName: 'decimals' });
+    const decimals = await publicClient.readContract({ address: USDC_ADDRESS, abi: erc20Abi, functionName: 'decimals' });
     if (decimals !== USDC_DECIMALS) throw new ChainConfigError(`USDC decimals ${decimals} != ${USDC_DECIMALS}`);
   })().catch((e) => {
     g.__chainOk = undefined;
@@ -41,7 +41,7 @@ export async function getUsdcBalance(address: string): Promise<UsdcBalance> {
   const key = address.toLowerCase();
   let hit = cache.get(key);
   if (!hit || Date.now() - hit.asOf > BALANCE_TTL_MS) {
-    const raw = await client.readContract({
+    const raw = await publicClient.readContract({
       address: USDC_ADDRESS,
       abi: erc20Abi,
       functionName: 'balanceOf',

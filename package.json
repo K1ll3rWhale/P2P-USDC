@@ -10,7 +10,10 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/db-migrate.ts",
-    "demo:accounts": "tsx scripts/create-demo-accounts.ts"
+    "demo:accounts": "tsx scripts/create-demo-accounts.ts",
+    "worker": "tsx scripts/worker.ts",
+    "fund:demo": "tsx scripts/fund-demo-accounts.ts",
+    "test": "node --import tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.2.2",
