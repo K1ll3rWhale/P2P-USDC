@@ -24,6 +24,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             <nav>
               <Link href="/">Home</Link>
               <Link href="/wallet">Wallet</Link>
+              <Link href="/send">Send</Link>
               <Link href="/activity">Activity</Link>
               <Link href="/friends">Friends</Link>
               <span className="muted">@{user.username}</span>

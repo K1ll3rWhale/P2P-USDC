@@ -1,5 +1,8 @@
 import { createPrivateKey, createPublicKey } from 'node:crypto';
-import type { WalletAdapter, WalletRecord } from './types';
+import { encodeFunctionData, erc20Abi, getAddress } from 'viem';
+import { USDC_ADDRESS } from '../chain';
+import { PrivyHttpError, privySignedRpc } from './privy-rpc';
+import { ProviderRejectedError, type SendResult, type SendUsdcArgs, type TransactionHint, type WalletAdapter, type WalletRecord } from './types';
 
 const API = 'https://api.privy.io/v1';
 
@@ -82,5 +85,35 @@ export class PrivyWalletAdapter implements WalletAdapter {
     if (data.length === 0) return null;
     if (data.length > 1) throw new Error('Multiple wallets share this external ID');
     return this.toRecord(data[0], externalId);
+  }
+
+  async sendUsdcTransfer({ providerWalletId, to, amountRaw, referenceId }: SendUsdcArgs): Promise<SendResult> {
+    try {
+      const resp = await privySignedRpc<{ data: { transaction_id?: string; user_operation_hash?: string; hash?: string } }>(providerWalletId, {
+        method: 'eth_sendTransaction',
+        caip2: 'eip155:84532',
+        chain_type: 'ethereum',
+        sponsor: true, // with sponsor_options.asset: user-pays gas in USDC (dashboard: app-pays sponsorship is off)
+        sponsor_options: { asset: 'usdc' },
+        reference_id: referenceId,
+        params: {
+          transaction: {
+            to: USDC_ADDRESS,
+            value: '0x0',
+            data: encodeFunctionData({ abi: erc20Abi, functionName: 'transfer', args: [getAddress(to), amountRaw] }),
+          },
+        },
+      });
+      return { transactionId: resp.data.transaction_id, userOperationHash: resp.data.user_operation_hash, txHash: resp.data.hash || undefined };
+    } catch (e) {
+      // Only a clear client-side rejection means nothing was executed. Timeouts, 5xx and network errors are unclear.
+      if (e instanceof PrivyHttpError && [400, 401, 403, 404, 422].includes(e.status)) throw new ProviderRejectedError(e.message.slice(0, 300));
+      throw e;
+    }
+  }
+
+  async getTransactionHint(transactionId: string): Promise<TransactionHint | null> {
+    const t = await this.request<{ status?: string; transaction_hash?: string | null; user_operation_hash?: string }>('GET', `/transactions/${encodeURIComponent(transactionId)}`);
+    return { status: t.status, txHash: t.transaction_hash || undefined, userOperationHash: t.user_operation_hash };
   }
 }

@@ -15,6 +15,12 @@ function required(name: string): string {
   return v;
 }
 
+export class PrivyHttpError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+  }
+}
+
 /** POST /wallets/{id}/rpc signed by our authorization key. Throws with secrets redacted. Never auto-retries. */
 export async function privySignedRpc<T>(walletId: string, body: Record<string, unknown>): Promise<T> {
   const appId = required('PRIVY_APP_ID');
@@ -39,7 +45,7 @@ export async function privySignedRpc<T>(walletId: string, body: Record<string, u
   const text = await res.text();
   if (!res.ok) {
     const redacted = [secret, authKey].reduce((t, s) => t.split(s).join('[REDACTED]'), text);
-    throw new Error(`Privy rpc failed: HTTP ${res.status} ${redacted}`);
+    throw new PrivyHttpError(res.status, `Privy rpc failed: HTTP ${res.status} ${redacted}`);
   }
   return JSON.parse(text) as T;
 }

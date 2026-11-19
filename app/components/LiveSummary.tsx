@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import type { Summary } from '@/lib/summary';
 
 const POLL_MS = 10_000;
-const STATUS_LABEL = { observed: 'Pending (waiting for confirmations)', confirmed: 'Confirmed', dropped: 'Dropped' } as const;
+const STATUS_LABEL = { pending: 'Pending', confirmed: 'Confirmed', failed: 'Failed', stuck: 'Taking longer than expected' } as const;
+const TITLE = { deposit: 'Deposit from', receipt: 'Received from', send: 'Sent to', withdrawal: 'Withdrawal to' } as const;
 const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
 const clock = (ms: number) => new Date(ms).toISOString().slice(11, 19) + ' UTC';
 
@@ -45,24 +46,36 @@ export function LiveSummary({ initial, limit, showBalance }: { initial: Summary;
         </div>
       )}
       <div className="card">
-        <h2>{showBalance ? 'Recent activity' : 'Deposits'}</h2>
+        <h2>{showBalance ? 'Recent activity' : 'All activity'}</h2>
         {stale && <p className="muted">Could not refresh. Showing the last data.</p>}
         {data.activity.length === 0 ? (
-          <p className="muted">No deposits yet. Send test USDC to your wallet address.</p>
+          <p className="muted">No activity yet. Deposit test USDC to your wallet address.</p>
         ) : (
           <ul className="list">
-            {data.activity.map((a) => (
-              <li key={a.id}>
-                <div className="row">
-                  <strong>+{a.amount} USDC</strong>
-                  <span className="muted">Deposit · {STATUS_LABEL[a.status]}</span>
-                </div>
-                <div className="muted">
-                  {utc(a.when)} ·{' '}
-                  <a href={`https://sepolia.basescan.org/tx/${a.txHash}`} target="_blank" rel="noreferrer">BaseScan</a>
-                </div>
-              </li>
-            ))}
+            {data.activity.map((a) => {
+              const incoming = a.type === 'deposit' || a.type === 'receipt';
+              return (
+                <li key={a.id}>
+                  <div className="row">
+                    <strong>{incoming ? '+' : '−'}{a.amount} USDC</strong>
+                    <span className="muted">{TITLE[a.type]} {a.counterpart}</span>
+                  </div>
+                  {a.note && <div>“{a.note}”</div>}
+                  <div className="muted">
+                    {STATUS_LABEL[a.status]} · {utc(a.when)}
+                    {a.txHash && (
+                      <>
+                        {' '}· <a href={`https://sepolia.basescan.org/tx/${a.txHash}`} target="_blank" rel="noreferrer">BaseScan</a>
+                      </>
+                    )}
+                  </div>
+                  {a.fee && <div className="muted">Network fee {a.fee} USDC</div>}
+                  {!a.fee && a.feeEstimate && <div className="muted">Estimated network fee ≈ {a.feeEstimate} USDC</div>}
+                  {a.status === 'stuck' && <div className="error">This is taking longer than usual. We are checking the chain. Nothing is resent automatically.</div>}
+                  {a.status === 'failed' && <div className="error">{a.error || 'This transfer failed.'}</div>}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

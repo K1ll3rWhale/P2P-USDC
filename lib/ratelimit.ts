@@ -8,12 +8,15 @@ export const RATE_LIMITS = {
   loginPerIdentifier: 10,
   loginPerIp: 30,
   signupPerIp: 20,
+  shortWindowMs: 60 * 1000,
+  quotesPerMinutePerUser: 30,
+  sendsPerMinutePerUser: 10, // sends and withdrawals share this limit
 } as const;
 
 /** Records an attempt for `key` and returns false (without recording) once `max` is reached in the window. */
-export function hit(key: string, max: number): boolean {
+export function hit(key: string, max: number, windowMs: number = RATE_LIMITS.windowMs): boolean {
   const now = Date.now();
-  const since = now - RATE_LIMITS.windowMs;
+  const since = now - windowMs;
   return db.transaction(
     (tx) => {
       tx.delete(rateLimits).where(and(eq(rateLimits.key, key), lt(rateLimits.createdAt, since))).run();

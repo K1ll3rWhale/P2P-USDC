@@ -25,6 +25,7 @@ function fakeChain(head: number, logs: ObservedLog[], failAfterLogCalls = Infini
       return logs.filter((l) => l.token === TOKEN && l.blockNumber >= fromBlock && l.blockNumber <= toBlock && recipients.includes(l.to));
     },
     getBlockTimestamp: async (b) => 1_700_000_000 + b,
+    getUserOperationEvents: async () => [],
     getReceipt: async (hash): Promise<ReceiptInfo | null> => {
       const l = logs.find((x) => x.txHash === hash);
       return l ? { status: 'success', blockNumber: l.blockNumber, blockHash: l.blockHash, transfers: [{ token: l.token, logIndex: l.logIndex, from: l.from, to: l.to, value: l.value }] } : null;

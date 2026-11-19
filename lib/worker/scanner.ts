@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import { CHAIN_ID, USDC_ADDRESS } from '../chain';
 import { db } from '../db';
-import { chainCursors, transfers, users, wallets } from '../db/schema';
+import { chainCursors, payments, transfers, users, wallets } from '../db/schema';
 import type { ChainReader, ObservedLog } from './types';
 
 // Named constants (tunable).
@@ -76,6 +76,31 @@ async function fetchRange(reader: ChainReader, from: number, head: number, maxRa
   }
 }
 
+/** Runs a log query over [from, head] in provider-sized chunks (halving and remembering the cap on range errors). */
+export async function collectLogs<T>(
+  from: number,
+  head: number,
+  fn: (fromBlock: number, toBlock: number) => Promise<T[]>,
+  sleep: (ms: number) => Promise<void> = defaultSleep,
+): Promise<T[]> {
+  const out: T[] = [];
+  let size = Math.min(MAX_BLOCK_RANGE, rangeCap);
+  while (from <= head) {
+    const to = Math.min(from + size - 1, head);
+    try {
+      out.push(...(await withBackoff(() => fn(from, to), { sleep })));
+      from = to + 1;
+    } catch (e) {
+      if (size > 1 && isRangeError(e)) {
+        size = rangeCap = Math.max(1, Math.floor(size / 2));
+        continue;
+      }
+      throw e;
+    }
+  }
+  return out;
+}
+
 export interface ScanStats { from: number; to: number; changed: number }
 
 /**
@@ -93,6 +118,7 @@ export async function scanOnce(reader: ChainReader, opts: ScanOptions = {}): Pro
     .all();
   const owner = new Map(rows.map((r) => [r.address.toLowerCase(), r.userId]));
   const recipients = [...owner.keys()];
+  const appWallets = new Set(db.select({ a: wallets.address }).from(wallets).all().map((w) => w.a.toLowerCase()));
 
   const head = await withBackoff(() => reader.getBlockNumber(), { sleep: o.sleep });
   const cursor = db.select().from(chainCursors).where(eq(chainCursors.key, CURSOR_KEY)).get();
@@ -130,7 +156,9 @@ export async function scanOnce(reader: ChainReader, opts: ScanOptions = {}): Pro
             userId: owner.get(l.to)!,
             amountRaw: l.value.toString(),
             status: 'observed',
-            kind: 'deposit', // later sends claim their own transfer by known tx hash
+            // A transfer FROM another app wallet is a payment between users, never a deposit. The resolver (or the
+            // claim below) attaches the intent by tx hash, in either order.
+            kind: appWallets.has(l.from) ? 'receipt' : 'deposit',
             observedAt: now,
           })
           .onConflictDoUpdate({
@@ -139,6 +167,18 @@ export async function scanOnce(reader: ChainReader, opts: ScanOptions = {}): Pro
             setWhere: eq(transfers.status, 'dropped'), // re-observed after a reorg
           })
           .run().changes;
+        // If the send was already resolved (tx hash known), claim immediately. Otherwise the resolver claims later.
+        const intent = tx
+          .select({ id: payments.id })
+          .from(payments)
+          .where(and(eq(payments.txHash, l.txHash), eq(payments.fromAddress, l.from), eq(payments.toAddress, l.to), eq(payments.amountRaw, l.value.toString())))
+          .get();
+        if (intent) {
+          tx.update(transfers)
+            .set({ claimedIntentId: intent.id, kind: 'receipt' })
+            .where(and(eq(transfers.chainId, CHAIN_ID), eq(transfers.token, TOKEN), eq(transfers.txHash, l.txHash), eq(transfers.logIndex, l.logIndex)))
+            .run();
+        }
       }
       tx.insert(chainCursors)
         .values({ key: CURSOR_KEY, lastBlock: to, updatedAt: now })

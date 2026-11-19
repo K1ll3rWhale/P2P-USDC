@@ -34,13 +34,13 @@ export function assertChainConfig(): Promise<void> {
 export type UsdcBalance = { raw: bigint; formatted: string; asOf: number };
 
 /** USDC balance from the chain, cached at most BALANCE_TTL_MS per address. */
-export async function getUsdcBalance(address: string): Promise<UsdcBalance> {
+export async function getUsdcBalance(address: string, opts: { fresh?: boolean } = {}): Promise<UsdcBalance> {
   if (!isAddress(address)) throw new Error('Invalid address');
   await assertChainConfig();
   const cache = (g.__balances ??= new Map());
   const key = address.toLowerCase();
   let hit = cache.get(key);
-  if (!hit || Date.now() - hit.asOf > BALANCE_TTL_MS) {
+  if (opts.fresh || !hit || Date.now() - hit.asOf > BALANCE_TTL_MS) {
     const raw = await publicClient.readContract({
       address: USDC_ADDRESS,
       abi: erc20Abi,

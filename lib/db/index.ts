@@ -12,6 +12,7 @@ function open() {
   const s = new Database(path);
   s.pragma('journal_mode = WAL');
   s.pragma('foreign_keys = ON');
+  s.pragma('busy_timeout = 5000'); // the web app and the worker share this file
   return s;
 }
 

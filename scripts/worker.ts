@@ -1,6 +1,8 @@
 // Deposit worker: scans USDC Transfer logs into app wallets and confirms them. Separate from the web app.
 import '../lib/load-env';
 import { assertChainConfig } from '../lib/chain';
+import { resolvePayments } from '../lib/payments/resolve';
+import { getWalletAdapter } from '../lib/wallet-adapter';
 import { confirmOnce, DEFAULT_START_LOOKBACK, scanOnce } from '../lib/worker/scanner';
 import { createViemReader } from '../lib/worker/viem-reader';
 
@@ -22,6 +24,9 @@ while (!stopping) {
   try {
     const s = await scanOnce(reader, { startLookback });
     const c = await confirmOnce(reader);
+    const adapter = getWalletAdapter();
+    const r = await resolvePayments(reader, { hint: adapter.getTransactionHint?.bind(adapter) });
+    if (r.confirmed || r.failed) console.log(`[worker] outgoing: ${r.confirmed} confirmed, ${r.failed} failed, ${r.open} still open`);
     if (s.changed || c.confirmed || c.dropped) {
       console.log(`[worker] scanned ${s.from}-${s.to}: ${s.changed} new/updated, ${c.confirmed} confirmed, ${c.dropped} dropped`);
     }

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, like, ne, or } from 'drizzle-orm';
 import { db } from './db';
-import { friendships, users } from './db/schema';
+import { friendships, users, wallets } from './db/schema';
 import { normalize } from './validation';
 
 export type FriendResult = { ok: true } | { ok: false; error: string; incomingRequestId?: string };
@@ -109,4 +109,21 @@ export function listFriendships(actorId: string) {
 
 export function countIncoming(actorId: string): number {
   return listFriendships(actorId).incoming.length;
+}
+
+export function areAcceptedFriends(a: string, b: string): boolean {
+  return findPair(a, b)?.status === 'accepted';
+}
+
+/** The actor's accepted friend with this username (case-insensitive), with their active wallet address. */
+export function getAcceptedFriendByUsername(actorId: string, username: string) {
+  const u = db.select().from(users).where(eq(users.usernameNorm, normalize(username))).get();
+  if (!u || u.id === actorId || u.status !== 'active' || !areAcceptedFriends(actorId, u.id)) return null;
+  const w = db.select({ address: wallets.address }).from(wallets).where(eq(wallets.userId, u.id)).get();
+  return w ? { id: u.id, username: u.username, address: w.address } : null;
+}
+
+export function listAcceptedFriends(actorId: string): { id: string; username: string }[] {
+  const all = listFriendships(actorId).accepted;
+  return all.map((f) => ({ id: f.id, username: f.otherUsername })).sort((x, y) => x.username.localeCompare(y.username));
 }

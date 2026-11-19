@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { TransferForm } from '../components/TransferForm';
 import { CopyButton } from './CopyButton';
 import { USDC_ADDRESS } from '@/lib/chain';
 import { getWalletFor, requireUser } from '@/lib/session';
@@ -30,6 +31,7 @@ export default async function WalletPage() {
           contract is <code>{USDC_ADDRESS}</code>. Sending a transfer costs a small USDC fee, so keep a little extra.
         </p>
       </div>
+      <TransferForm mode="withdraw" />
     </>
   );
 }
