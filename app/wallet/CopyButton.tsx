@@ -8,6 +8,7 @@ export function CopyButton({ text }: { text: string }) {
     <button
       type="button"
       className="secondary"
+      aria-live="polite"
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(text);

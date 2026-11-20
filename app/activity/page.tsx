@@ -11,6 +11,7 @@ export default async function ActivityPage() {
   return (
     <>
       <h1>Activity</h1>
+      <p className="page-intro">Deposits, payments, and withdrawals. Transfers are confirmed only after a successful on-chain receipt.</p>
       <LiveSummary initial={initial} limit={50} showBalance={false} />
     </>
   );

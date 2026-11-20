@@ -1,9 +1,16 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { Avatar } from './Avatar';
+import { EmptyState } from './EmptyState';
+import { fmtAmount, fmtFee } from './format';
+import { REFRESH_EVENT } from './LiveBalance';
+import { Spinner } from './Spinner';
 
 type Quote = { id: string; recipientLabel: string; receives: string; estimatedFee: string; estimatedTotal: string; expiresAt: number };
 type Friend = { id: string; username: string };
+
+const NOTE_MAX = 140;
 
 const newKey = () =>
   typeof crypto.randomUUID === 'function'
@@ -69,6 +76,7 @@ export function TransferForm({ mode, friends = [] }: { mode: 'send' | 'withdraw'
       setAmount('');
       setNote('');
       setMessage({ kind: 'ok', text: 'Submitted. It shows in Activity as pending until the chain confirms it.' });
+      window.dispatchEvent(new Event(REFRESH_EVENT)); // presentation only: tells the balance card to re-read /api/summary
     } else if (json.code === 'quote_expired' || json.code === 'quote_used') {
       const ok = await getQuote();
       if (ok) setMessage({ kind: 'info', text: 'The quote expired. Review the updated amounts and confirm again.' });
@@ -81,54 +89,78 @@ export function TransferForm({ mode, friends = [] }: { mode: 'send' | 'withdraw'
 
   const expired = quote !== null && secondsLeft === 0;
   const label = mode === 'send' ? 'Send' : 'Withdraw';
+  const noFriends = mode === 'send' && friends.length === 0;
 
   return (
     <div className="card">
       <h2>{mode === 'send' ? 'Send USDC to a friend' : 'Withdraw to an external address'}</h2>
-      <form onSubmit={onQuote}>
-        {mode === 'send' ? (
-          friends.length === 0 ? (
-            <p className="muted">You have no accepted friends yet. Add one on the Friends page.</p>
+      {noFriends ? (
+        <EmptyState title="No friends to send to yet">
+          Only accepted friends can receive a send. <a href="/friends">Add a friend</a> first.
+        </EmptyState>
+      ) : (
+        <form onSubmit={onQuote}>
+          {mode === 'send' ? (
+            <fieldset style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+              <legend className="label" style={{ padding: 0, marginTop: 0 }}>1. Choose a friend</legend>
+              <div className="choice-list" role="radiogroup">
+                {friends.map((f) => (
+                  <label key={f.id} className="choice">
+                    <input
+                      type="radio"
+                      name="friend"
+                      value={f.username}
+                      checked={recipient === f.username}
+                      onChange={() => { setRecipient(f.username); setQuote(null); }}
+                    />
+                    <Avatar name={f.username} />
+                    @{f.username}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
           ) : (
             <>
-              <label htmlFor="friend">Friend</label>
-              <select id="friend" value={recipient} onChange={(e) => { setRecipient(e.target.value); setQuote(null); }} style={{ width: '100%', padding: 10 }}>
-                {friends.map((f) => <option key={f.id} value={f.username}>@{f.username}</option>)}
-              </select>
+              <label htmlFor="dest" style={{ marginTop: 0 }}>Destination address (Base Sepolia)</label>
+              <input id="dest" value={recipient} onChange={(e) => { setRecipient(e.target.value); setQuote(null); }} placeholder="0x…" autoComplete="off" spellCheck={false} style={{ fontFamily: 'var(--mono)' }} />
             </>
-          )
-        ) : (
-          <>
-            <label htmlFor="dest">Destination address (Base Sepolia)</label>
-            <input id="dest" value={recipient} onChange={(e) => { setRecipient(e.target.value); setQuote(null); }} placeholder="0x…" autoComplete="off" spellCheck={false} />
-          </>
-        )}
-        <label htmlFor={`amount-${mode}`}>Amount (USDC the recipient receives)</label>
-        <input id={`amount-${mode}`} inputMode="decimal" value={amount} onChange={(e) => { setAmount(e.target.value); setQuote(null); }} placeholder="1.00" autoComplete="off" />
-        {mode === 'send' && (
-          <>
-            <label htmlFor="note">Note (optional, up to 140 characters)</label>
-            <input id="note" value={note} maxLength={140} onChange={(e) => setNote(e.target.value)} autoComplete="off" />
-          </>
-        )}
-        <p>
-          <button type="submit" disabled={busy || (mode === 'send' && friends.length === 0)}>
-            {busy && !quote ? 'Getting quote…' : quote ? 'Refresh quote' : 'Review'}
-          </button>
-        </p>
-      </form>
+          )}
+          <label htmlFor={`amount-${mode}`}>{mode === 'send' ? '2. ' : ''}Amount (USDC the recipient receives)</label>
+          <input id={`amount-${mode}`} className="amount-input" inputMode="decimal" value={amount} onChange={(e) => { setAmount(e.target.value); setQuote(null); }} placeholder="0.00" autoComplete="off" />
+          {mode === 'send' && (
+            <>
+              <label htmlFor="note">3. Note (optional)</label>
+              <input id="note" value={note} maxLength={NOTE_MAX} onChange={(e) => setNote(e.target.value)} autoComplete="off" placeholder="What is it for?" />
+              <p className="field-hint right" aria-live="polite">{[...note].length}/{NOTE_MAX}</p>
+            </>
+          )}
+          <div className="form-actions">
+            <button type="submit" className="btn-block" disabled={busy}>
+              {busy && !quote ? <><Spinner /> Getting quote…</> : quote ? 'Refresh quote' : 'Review'}
+            </button>
+          </div>
+        </form>
+      )}
 
-      {message && <p className={message.kind === 'error' ? 'error' : 'muted'} role={message.kind === 'error' ? 'alert' : 'status'}>{message.text}</p>}
+      {message && (
+        <p className={`alert alert-${message.kind}`} role={message.kind === 'error' ? 'alert' : 'status'}>{message.text}</p>
+      )}
 
       {quote && (
-        <div className="address" aria-live="polite">
-          <div>To: <strong>{quote.recipientLabel}</strong></div>
-          <div>Recipient receives: <strong>{quote.receives} USDC</strong></div>
-          <div>Estimated network fee: ≈ {quote.estimatedFee} USDC <span className="muted">(an estimate; the actual fee is recorded after sending)</span></div>
-          <div>Estimated total debit: <strong>{quote.estimatedTotal} USDC</strong></div>
-          <p className="muted">{expired ? 'This quote expired.' : `Valid for ${secondsLeft}s`}</p>
-          <button type="button" onClick={expired ? getQuote : onConfirm} disabled={busy}>
-            {busy ? 'Submitting…' : expired ? 'Refresh quote' : `Confirm ${label.toLowerCase()}`}
+        <div className="quote" aria-live="polite">
+          <div className="to">
+            {mode === 'withdraw' ? 'Withdraw to (full address):' : 'To:'}{' '}
+            {mode === 'withdraw' ? <div className="address dest" data-testid="withdraw-destination">{quote.recipientLabel}</div> : <strong>{quote.recipientLabel}</strong>}
+          </div>
+          <dl>
+            <div className="line"><dt>Recipient receives</dt><dd>{fmtAmount(quote.receives)} USDC</dd></div>
+            <div className="line"><dt>Estimated network fee</dt><dd>≈ {fmtFee(quote.estimatedFee)} USDC</dd></div>
+            <div className="line"><dt>Estimated total debit</dt><dd>{fmtAmount(quote.estimatedTotal)} USDC</dd></div>
+          </dl>
+          <p className="field-hint">The network fee is an estimate; the actual fee is recorded after sending.</p>
+          <p className={expired ? 'countdown expired' : 'countdown'}>{expired ? 'This quote expired.' : `Quote valid for ${secondsLeft}s`}</p>
+          <button type="button" className="btn-primary btn-block" onClick={expired ? getQuote : onConfirm} disabled={busy}>
+            {busy ? <><Spinner /> Submitting…</> : expired ? 'Refresh quote' : `Confirm ${label.toLowerCase()}`}
           </button>
         </div>
       )}

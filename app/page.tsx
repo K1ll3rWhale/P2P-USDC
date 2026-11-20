@@ -13,7 +13,7 @@ export default async function HomePage() {
       <div className="card">
         <h1>Setting up your wallet</h1>
         <p>Your account exists, but your wallet is not ready yet.</p>
-        {user.provisioningError && <p className="error">{user.provisioningError}</p>}
+        {user.provisioningError && <p className="alert alert-error" role="alert">{user.provisioningError}</p>}
         <form action={retryProvisionAction}>
           <SubmitButton pendingText="Setting up…">Retry wallet setup</SubmitButton>
         </form>

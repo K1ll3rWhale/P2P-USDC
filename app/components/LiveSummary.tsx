@@ -1,17 +1,19 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import type { Summary } from '@/lib/summary';
+import { ActivityRow } from './ActivityRow';
+import { EmptyState } from './EmptyState';
+import { clock, fmtAmount } from './format';
 
 const POLL_MS = 10_000;
-const STATUS_LABEL = { pending: 'Pending', confirmed: 'Confirmed', failed: 'Failed', stuck: 'Taking longer than expected' } as const;
-const TITLE = { deposit: 'Deposit from', receipt: 'Received from', send: 'Sent to', withdrawal: 'Withdrawal to' } as const;
-const utc = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
-const clock = (ms: number) => new Date(ms).toISOString().slice(11, 19) + ' UTC';
+const OLD_MS = 45_000; // a balance older than this is flagged as stale
 
 export function LiveSummary({ initial, limit, showBalance }: { initial: Summary; limit: number; showBalance: boolean }) {
   const [data, setData] = useState(initial);
   const [stale, setStale] = useState(false);
+  const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -29,56 +31,48 @@ export function LiveSummary({ initial, limit, showBalance }: { initial: Summary;
     return () => { alive = false; clearInterval(id); };
   }, [limit]);
 
+  useEffect(() => {
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 5_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const old = Boolean(data.balance && now !== null && now - data.balance.asOf > OLD_MS);
+
   return (
     <>
       {showBalance && (
-        <div className="card">
-          <h2>USDC balance</h2>
+        <div className="card hero">
+          <p className="hero-label">USDC balance</p>
           {data.balance ? (
             <>
-              <div className="balance">{data.balance.formatted} USDC</div>
-              <p className="muted">As of {clock(data.balance.asOf)} · read from Base Sepolia · refreshes every 10 seconds</p>
-              {stale && <p className="error">Could not refresh just now. This balance may be out of date (as of {clock(data.balance.asOf)}).</p>}
+              <div className="balance">{fmtAmount(data.balance.formatted)} <small>USDC</small></div>
+              <p className="hero-meta">
+                As of {clock(data.balance.asOf)} · read from Base Sepolia · refreshes every 10 seconds{' '}
+                {(stale || old) && <span className="pill pill-stale">Stale</span>}
+              </p>
+              {stale && <p className="alert alert-warn">Could not refresh just now. This balance may be out of date (as of {clock(data.balance.asOf)}).</p>}
             </>
           ) : (
-            <p className="error">Balance unavailable right now. Retrying.</p>
+            <p className="alert alert-warn" style={{ marginTop: 12 }}>Balance unavailable right now. Retrying.</p>
           )}
-          <a className="btn" href="/wallet#deposit">Deposit</a>
+          <div className="btn-row">
+            <Link className="btn btn-primary" href="/send">Send</Link>
+            <a className="btn btn-secondary" href="/wallet#deposit">Deposit</a>
+          </div>
         </div>
       )}
       <div className="card">
         <h2>{showBalance ? 'Recent activity' : 'All activity'}</h2>
-        {stale && <p className="muted">Could not refresh. Showing the last data.</p>}
+        {stale && <p className="alert alert-warn">Could not refresh. Showing the last data.</p>}
         {data.activity.length === 0 ? (
-          <p className="muted">No activity yet. Deposit test USDC to your wallet address.</p>
+          <EmptyState title="No activity yet">Deposit test USDC to your wallet address and it will show up here.</EmptyState>
         ) : (
-          <ul className="list">
-            {data.activity.map((a) => {
-              const incoming = a.type === 'deposit' || a.type === 'receipt';
-              return (
-                <li key={a.id}>
-                  <div className="row">
-                    <strong>{incoming ? '+' : '−'}{a.amount} USDC</strong>
-                    <span className="muted">{TITLE[a.type]} {a.counterpart}</span>
-                  </div>
-                  {a.note && <div>“{a.note}”</div>}
-                  <div className="muted">
-                    {STATUS_LABEL[a.status]} · {utc(a.when)}
-                    {a.txHash && (
-                      <>
-                        {' '}· <a href={`https://sepolia.basescan.org/tx/${a.txHash}`} target="_blank" rel="noreferrer">BaseScan</a>
-                      </>
-                    )}
-                  </div>
-                  {a.fee && <div className="muted">Network fee {a.fee} USDC</div>}
-                  {!a.fee && a.feeEstimate && <div className="muted">Estimated network fee ≈ {a.feeEstimate} USDC</div>}
-                  {a.status === 'stuck' && <div className="error">This is taking longer than usual. We are checking the chain. Nothing is resent automatically.</div>}
-                  {a.status === 'failed' && <div className="error">{a.error || 'This transfer failed.'}</div>}
-                </li>
-              );
-            })}
+          <ul className="rows">
+            {data.activity.map((a) => <ActivityRow key={a.id} a={a} />)}
           </ul>
         )}
+        {showBalance && data.activity.length > 0 && <p style={{ margin: '12px 0 0' }}><Link href="/activity">See all activity</Link></p>}
       </div>
     </>
   );

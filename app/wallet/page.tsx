@@ -19,12 +19,12 @@ export default async function WalletPage() {
       </div>
       <div className="card">
         <h2>How to add test USDC</h2>
-        <ol>
+        <ol className="steps">
           <li>
-            Open the <a href="https://faucet.circle.com/" target="_blank" rel="noreferrer">Circle faucet</a>.
+            <span>Open the <a href="https://faucet.circle.com/" target="_blank" rel="noreferrer">Circle faucet</a>.</span>
           </li>
-          <li>Choose <strong>Base Sepolia</strong> as the network and <strong>USDC</strong> as the token.</li>
-          <li>Paste the address above and request funds.</li>
+          <li><span>Choose <strong>Base Sepolia</strong> as the network and <strong>USDC</strong> as the token.</span></li>
+          <li><span>Paste the address above and request funds.</span></li>
         </ol>
         <p className="muted">
           Only send USDC on Base Sepolia to this address. Sending other networks or tokens can lose them. The USDC
