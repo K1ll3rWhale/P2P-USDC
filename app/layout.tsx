@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { logoutAction } from './actions';
+import { NavTabs } from './components/NavTabs';
 import './globals.css';
 import { getCurrentUser } from '@/lib/session';
 
@@ -14,32 +15,32 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     <html lang="en">
       <body>
         <div className="banner" role="note">
-          Base Sepolia testnet. Test funds only. App-controlled wallets with provider-protected keys. No real-money value.
+          <strong>Base Sepolia testnet.</strong> Test funds only. App-controlled wallets with provider-protected keys. No real-money value.
         </div>
-        <header className="top">
-          <Link href="/">
-            <strong>P2P USDC</strong>
-          </Link>
-          {user ? (
-            <nav>
-              <Link href="/">Home</Link>
-              <Link href="/wallet">Wallet</Link>
-              <Link href="/send">Send</Link>
-              <Link href="/activity">Activity</Link>
-              <Link href="/friends">Friends</Link>
-              <span className="muted">@{user.username}</span>
-              <form action={logoutAction}>
-                <button className="link" type="submit">
-                  Log out
-                </button>
-              </form>
-            </nav>
-          ) : (
-            <nav>
-              <Link href="/login">Log in</Link>
-              <Link href="/signup">Sign up</Link>
-            </nav>
-          )}
+        <header className="topbar">
+          <div className="topbar-inner">
+            <div className="topbar-row">
+              <Link href="/" className="brand">
+                P2P <span>USDC</span>
+              </Link>
+              {user ? (
+                <div className="userbox">
+                  <span className="username">@{user.username}</span>
+                  <form action={logoutAction}>
+                    <button className="link" type="submit">
+                      Log out
+                    </button>
+                  </form>
+                </div>
+              ) : (
+                <nav className="authnav" aria-label="Account">
+                  <Link href="/login">Log in</Link>
+                  <Link href="/signup">Sign up</Link>
+                </nav>
+              )}
+            </div>
+            {user && <NavTabs />}
+          </div>
         </header>
         <main>{children}</main>
       </body>

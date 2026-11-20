@@ -1,7 +1,12 @@
+import { SkeletonHero, SkeletonLines } from './components/Skeleton';
+
 export default function Loading() {
   return (
-    <div className="card" role="status" aria-live="polite">
-      <p className="muted">Loading…</p>
+    <div role="status" aria-live="polite" aria-label="Loading">
+      <SkeletonHero />
+      <div className="card">
+        <SkeletonLines count={4} />
+      </div>
     </div>
   );
 }
