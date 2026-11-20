@@ -3,8 +3,6 @@ import { Avatar } from './Avatar';
 import { fmtAmount, fmtFee, utc } from './format';
 import { StatusPill } from './StatusPill';
 
-const VERB = { deposit: 'Deposit from', receipt: 'Received from', send: 'Sent to', withdrawal: 'Withdrawal to' } as const;
-
 /** One activity entry: avatar, counterpart, note, signed amount, status pill, date, fee, BaseScan link. */
 export function ActivityRow({ a }: { a: ActivityItem }) {
   const incoming = a.type === 'deposit' || a.type === 'receipt';
@@ -15,7 +13,7 @@ export function ActivityRow({ a }: { a: ActivityItem }) {
         <Avatar name={who} />
         <div className="item-main">
           <div className="item-title">{who}</div>
-          <div className="item-sub">{VERB[a.type]}{a.note ? <> · “{a.note}”</> : null}</div>
+          {a.note && <div className="item-sub">Note: “{a.note}”</div>}
           <div className="activity-meta">
             <span>{utc(a.when)}</span>
             {a.fee && <span>· Network fee {fmtFee(a.fee)} USDC</span>}
