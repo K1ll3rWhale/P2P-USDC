@@ -30,7 +30,7 @@ real-money value.**
 
 ## Environment variable names (values go in `.env.local`, server-only)
 Required: `PRIVY_APP_ID`, `PRIVY_APP_SECRET`, `PRIVY_AUTHORIZATION_PRIVATE_KEY`, `PRIVY_AUTHORIZATION_KEY_ID`.
-Optional: `BASE_SEPOLIA_RPC_URL`, `DATABASE_PATH`, `WORKER_START_LOOKBACK`, `TRUST_PROXY`, `PORT`, `DEMO_PASSWORD`.
+Optional: `BASE_SEPOLIA_RPC_URL`, `DATABASE_PATH`, `WORKER_START_LOOKBACK`, `TRUST_PROXY`, `PORT`, `DEMO_PASSWORD`, `CSP_REPORT_ONLY`.
 Unused: `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `CDP_WALLET_SECRET` (CDP was skipped).
 None are `NEXT_PUBLIC_*`; secrets are never sent to the browser. `TRUST_PROXY=1` makes the app trust `x-forwarded-for` and
 `x-forwarded-proto`; set it only behind a proxy you control (otherwise all clients share one rate-limit bucket).
@@ -69,7 +69,7 @@ its saved cursor, so a long outage means a long catch-up (about 2 minutes per 28
   than expected"; it is never resent automatically.
 - **A stuck transfer blocks its wallet** (one unresolved transfer per wallet) until it resolves or an operator marks it failed.
 - **No email verification or password reset.** Demo accounts share a documented testnet password unless `DEMO_PASSWORD` is set.
-- **No security headers (CSP etc.) are configured.** Single SQLite file, single node. HTTPS is expected to be terminated by a
+- **Security headers:** every response carries a per-request-nonce Content-Security-Policy (scripts only with the nonce, same-origin connections, no framing), `nosniff`, `Referrer-Policy: same-origin` and `X-Frame-Options: DENY` (set in `proxy.ts`, policy in `lib/csp.ts`). The CSP has not been checked against every page in a real browser; if a page misbehaves, set `CSP_REPORT_ONLY=1` to send it as report-only. Single SQLite file, single node. HTTPS is expected to be terminated by a
   proxy; the session cookie is `Secure` only when the request is HTTPS.
 - **Friend declines and cancels delete the request** (no history is kept).
 - `npm audit` reports 4 moderate findings, all in the dev-only `drizzle-kit` toolchain (old esbuild); production dependencies: 0.

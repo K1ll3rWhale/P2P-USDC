@@ -76,6 +76,26 @@ for (const p of ['/', '/wallet', '/send', '/activity', '/friends']) {
   check(`page ${p} without a session redirects to login`, r.status === 307, `status ${r.status}`);
 }
 
+// ------------------------------------------------------------------------------------------------ A2. security headers
+console.log('\n# Security headers and CSP');
+for (const [label, path, cookie] of [["login page", "/login", undefined], ["home page (signed in)", "/", alice], ["send page (signed in)", "/send", alice], ["API route", "/api/summary", alice]] as const) {
+  const res = await fetch(BASE + path, { headers: cookie ? { cookie } : {}, redirect: "manual" });
+  const csp = res.headers.get("content-security-policy") ?? "";
+  check(label + ": CSP present, no unsafe-inline/eval for scripts, no framing", /script-src[^;]*nonce-/.test(csp) && !/script-src[^;]*unsafe-(inline|eval)/.test(csp) && csp.includes("frame-ancestors 'none'") && csp.includes("connect-src 'self'"), csp ? "ok" : "missing");
+  check(label + ": nosniff, referrer policy, X-Frame-Options", res.headers.get("x-content-type-options") === "nosniff" && res.headers.get("referrer-policy") === "same-origin" && res.headers.get("x-frame-options") === "DENY");
+  if (path !== "/api/summary") {
+    const html = await res.text();
+    const nonce = csp.match(/nonce-([^']+)/)?.[1];
+    const tags = [...html.matchAll(/<script\b[^>]*>/g)].map((m) => m[0]);
+    const bad = tags.filter((t) => !nonce || !t.includes(`nonce="${nonce}"`));
+    check(label + ": every <script> tag carries this request's nonce (" + tags.length + " tags)", tags.length > 0 && bad.length === 0, bad[0] ?? "");
+  }
+}
+const anon = await fetch(BASE + "/", { redirect: "manual" });
+check("anonymous redirect also carries security headers", anon.status === 307 && anon.headers.get("x-frame-options") === "DENY");
+const n1 = (await fetch(BASE + "/login")).headers.get("content-security-policy"), n2 = (await fetch(BASE + "/login")).headers.get("content-security-policy");
+check("the CSP nonce differs between requests", Boolean(n1) && n1 !== n2);
+
 // ------------------------------------------------------------------------------------------------ B. origin / CSRF protection
 console.log('\n# Origin / CSRF protection');
 const q = { op: 'send', recipient: 'bob', amount: '0.01' };
