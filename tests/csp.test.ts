@@ -7,7 +7,7 @@ test('csp: nonces are unique and long; policy locks scripts, framing, forms and 
   assert.notEqual(a, newNonce());
   assert.ok(a.length >= 20);
   const p = buildCsp(a, false);
-  assert.match(p, new RegExp(`script-src 'self' 'nonce-${a.replace(/[+/=]/g, '\$&')}' 'strict-dynamic'`));
+  assert.ok(p.includes(`script-src 'self' 'nonce-${a}' 'strict-dynamic'`));
   assert.doesNotMatch(p.split(';').find((d) => d.includes('script-src'))!, /unsafe-inline|unsafe-eval/);
   for (const d of ["default-src 'self'", "connect-src 'self'", "frame-ancestors 'none'", "object-src 'none'", "form-action 'self'", "base-uri 'self'"]) {
     assert.ok(p.includes(d), d);
