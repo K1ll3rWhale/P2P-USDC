@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { Avatar } from './Avatar';
 import { EmptyState } from './EmptyState';
@@ -29,6 +30,7 @@ export function TransferForm({ mode, friends = [], request }: { mode: 'send' | '
   const [amount, setAmount] = useState(request?.amount ?? '');
   const [note, setNote] = useState(request?.note ?? '');
   const [done, setDone] = useState(false);
+  const router = useRouter();
   const [quote, setQuote] = useState<Quote | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -78,7 +80,10 @@ export function TransferForm({ mode, friends = [], request }: { mode: 'send' | '
       setQuote(null);
       setAmount('');
       setNote('');
-      if (request) setDone(true);
+      if (request) {
+        setDone(true);
+        router.push('/'); // paying a request is finished: go Home, where the pending send shows in Recent activity
+      }
       setMessage({ kind: 'ok', text: 'Submitted. It shows in Activity as pending until the chain confirms it.' });
       window.dispatchEvent(new Event(REFRESH_EVENT)); // presentation only: tells the balance card to re-read /api/summary
     } else if (json.code === 'quote_expired' || json.code === 'quote_used') {
