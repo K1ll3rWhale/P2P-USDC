@@ -1,14 +1,20 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { LiveBalance } from '../components/LiveBalance';
 import { TransferForm } from '../components/TransferForm';
 import { listAcceptedFriends } from '@/lib/friends';
 import { getWalletFor, requireUser } from '@/lib/session';
+import { fmtAmount } from '../components/format';
+import { getPayableRequest } from '@/lib/requests';
 import { getSummary } from '@/lib/summary';
 
-export default async function SendPage() {
+export default async function SendPage({ searchParams }: { searchParams: Promise<{ request?: string }> }) {
   const user = await requireUser();
   const wallet = getWalletFor(user.id);
   if (user.status !== 'active' || !wallet) redirect('/');
+  const { request: requestId } = await searchParams;
+  const paying = requestId ? getPayableRequest(user.id, requestId) : null;
+  const friends = listAcceptedFriends(user.id);
   const initial = await getSummary(user.id, wallet.address, 10);
   return (
     <>
@@ -17,8 +23,23 @@ export default async function SendPage() {
         The amount you enter is what your friend receives. You also pay the actual network fee in USDC, which is
         recorded after the transfer. Testnet only.
       </p>
+      {requestId && !paying && (
+        <p className="alert alert-warn" role="alert">
+          That money request can no longer be paid. It may have expired, been cancelled, or already be paid. <Link href="/friends?tab=money">Back to requests</Link>
+        </p>
+      )}
+      {paying && (
+        <p className="alert alert-info" role="status">
+          Paying @{paying.requesterUsername}&apos;s request for {fmtAmount(paying.amount)} USDC. <Link href="/friends?tab=money">Back to requests</Link>
+        </p>
+      )}
       <LiveBalance initial={initial} />
-      <TransferForm mode="send" friends={listAcceptedFriends(user.id)} />
+      <TransferForm
+        mode="send"
+        friends={paying ? friends.filter((f) => f.username === paying.requesterUsername) : friends}
+        request={paying ? { id: paying.id, username: paying.requesterUsername, amount: paying.amount, note: paying.note } : undefined}
+      />
+      {!paying && <p className="muted" style={{ textAlign: 'center' }}>Want to ask for money instead? <Link href="/friends?tab=money">Request money</Link></p>}
     </>
   );
 }

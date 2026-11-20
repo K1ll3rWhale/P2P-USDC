@@ -3,9 +3,10 @@
 //   TRUST_PROXY=1 npx next start -p 3111      then      npm run security:check
 // Creates quotes only (never a payment). Prints PASS/FAIL per check and exits non-zero on any FAIL.
 import '../lib/load-env';
-import { and, eq, gt } from 'drizzle-orm';
+import { and, desc, eq, gt } from 'drizzle-orm';
 import { db } from '../lib/db';
-import { payments, quotes, rateLimits, users, wallets } from '../lib/db/schema';
+import { moneyRequests, payments, quotes, rateLimits, users, wallets } from '../lib/db/schema';
+import { createMoneyRequest } from '../lib/requests';
 
 const BASE = process.env.LIVE_BASE ?? 'http://localhost:3111';
 const PASSWORD = process.env.DEMO_PASSWORD?.trim() || 'demo-password-123';
@@ -144,6 +145,34 @@ console.log('\n# Object-level authorization');
   check("a body naming bob's wallet or user is ignored: the sender is always the session user", attempt.status === 422 && String(json(attempt.text).error).includes(`Your balance is ${aliceBal}`), `status ${attempt.status}`);
   check('no payment was created by any of the above', paymentCount() === paymentsBefore);
   check('friend actions (accept/decline/cancel by non-parties) are covered by unit tests, not re-tested here', true, 'tests/friends.test.ts');
+}
+
+// ------------------------------------------------------------------------------------------------ D2. money requests
+console.log('\n# Money requests (authorization; no money is moved)');
+{
+  const before = paymentCount();
+  const created = createMoneyRequest(bobId, { friend: 'alice', amount: '0.01', note: 'security check' }); // bob asks alice
+  const row = db.select().from(moneyRequests).where(eq(moneyRequests.requesterId, bobId)).orderBy(desc(moneyRequests.createdAt)).get();
+  check('setup: a request from bob to alice exists', created.ok && Boolean(row));
+  if (row) {
+    const pageAsPayer = (await api(alice, '/send?request=' + row.id)).text;
+    const pageAsRequester = (await api(bob, '/send?request=' + row.id)).text;
+    check('the payer sees the request on the Send page', /Paying\s*@(<!-- -->)?bob/.test(pageAsPayer));
+    check('the requester cannot open their own request for payment', /can no longer be paid/.test(pageAsRequester) && !/Paying\s*@/.test(pageAsRequester));
+    const qBob = json((await api(bob, '/api/quotes', { op: 'send', recipient: 'alice', amount: '0.01' })).text).quote;
+    const r1 = await api(bob, '/api/payments', { quoteId: qBob?.id, idempotencyKey: 'mr-' + rnd() + rnd(), requestId: row.id });
+    check('the requester cannot pay their own request (409 request_unavailable)', r1.status === 409 && json(r1.text).code === 'request_unavailable', 'status ' + r1.status);
+    const qAlice = json((await api(alice, '/api/quotes', { op: 'send', recipient: 'bob', amount: '0.02' })).text).quote;
+    const r2 = await api(alice, '/api/payments', { quoteId: qAlice?.id, idempotencyKey: 'mr-' + rnd() + rnd(), requestId: row.id });
+    check('the payer cannot pay a different amount against a request (409 request_unavailable)', r2.status === 409 && json(r2.text).code === 'request_unavailable', 'status ' + r2.status);
+    const qAlice2 = json((await api(alice, '/api/quotes', { op: 'send', recipient: 'bob', amount: '0.01' })).text).quote;
+    const r3 = await api(alice, '/api/payments', { quoteId: qAlice2?.id, idempotencyKey: 'mr-' + rnd() + rnd(), requestId: 'does-not-exist' });
+    check('an unknown request id is refused (409 request_unavailable)', r3.status === 409 && json(r3.text).code === 'request_unavailable', 'status ' + r3.status);
+    check('money requests: no payment rows were created', paymentCount() === before);
+    const unauth = await fetch(BASE + '/friends?tab=money', { redirect: 'manual' });
+    check('the money requests page requires a session', unauth.status === 307);
+    db.delete(moneyRequests).where(eq(moneyRequests.id, row.id)).run();
+  }
 }
 
 // ------------------------------------------------------------------------------------------------ E. rate limits

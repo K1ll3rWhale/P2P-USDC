@@ -9,6 +9,8 @@ import { Spinner } from './Spinner';
 
 type Quote = { id: string; recipientLabel: string; receives: string; estimatedFee: string; estimatedTotal: string; expiresAt: number };
 type Friend = { id: string; username: string };
+/** Set when this send pays a money request: recipient and amount are fixed by the request. */
+export type PayingRequest = { id: string; username: string; amount: string; note: string | null };
 
 const NOTE_MAX = 140;
 
@@ -22,10 +24,11 @@ const newKey = () =>
  * Flow: enter details, get a server quote (30 s), review it, confirm. An expired quote is refreshed and must be
  * confirmed again. Notes and names are rendered as plain text by React.
  */
-export function TransferForm({ mode, friends = [] }: { mode: 'send' | 'withdraw'; friends?: Friend[] }) {
-  const [recipient, setRecipient] = useState(friends[0]?.username ?? '');
-  const [amount, setAmount] = useState('');
-  const [note, setNote] = useState('');
+export function TransferForm({ mode, friends = [], request }: { mode: 'send' | 'withdraw'; friends?: Friend[]; request?: PayingRequest }) {
+  const [recipient, setRecipient] = useState(request?.username ?? friends[0]?.username ?? '');
+  const [amount, setAmount] = useState(request?.amount ?? '');
+  const [note, setNote] = useState(request?.note ?? '');
+  const [done, setDone] = useState(false);
   const [quote, setQuote] = useState<Quote | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -70,11 +73,12 @@ export function TransferForm({ mode, friends = [] }: { mode: 'send' | 'withdraw'
     if (!quote || busy) return;
     setBusy(true);
     setMessage(null);
-    const { res, json } = await post('/api/payments', { quoteId: quote.id, idempotencyKey: key.current, note: mode === 'send' ? note : undefined });
+    const { res, json } = await post('/api/payments', { quoteId: quote.id, idempotencyKey: key.current, note: mode === 'send' ? note : undefined, requestId: request?.id });
     if (res.ok) {
       setQuote(null);
       setAmount('');
       setNote('');
+      if (request) setDone(true);
       setMessage({ kind: 'ok', text: 'Submitted. It shows in Activity as pending until the chain confirms it.' });
       window.dispatchEvent(new Event(REFRESH_EVENT)); // presentation only: tells the balance card to re-read /api/summary
     } else if (json.code === 'quote_expired' || json.code === 'quote_used') {
@@ -90,11 +94,12 @@ export function TransferForm({ mode, friends = [] }: { mode: 'send' | 'withdraw'
   const expired = quote !== null && secondsLeft === 0;
   const label = mode === 'send' ? 'Send' : 'Withdraw';
   const noFriends = mode === 'send' && friends.length === 0;
+  const showForm = !done;
 
   return (
     <div className="card">
       <h2>{mode === 'send' ? 'Send USDC to a friend' : 'Withdraw to an external address'}</h2>
-      {noFriends ? (
+      {!showForm ? null : noFriends ? (
         <EmptyState title="No friends to send to yet">
           Only accepted friends can receive a send. <a href="/friends">Add a friend</a> first.
         </EmptyState>
@@ -126,7 +131,8 @@ export function TransferForm({ mode, friends = [] }: { mode: 'send' | 'withdraw'
             </>
           )}
           <label htmlFor={`amount-${mode}`}>{mode === 'send' ? '2. ' : ''}Amount (USDC the recipient receives)</label>
-          <input id={`amount-${mode}`} className="amount-input" inputMode="decimal" value={amount} onChange={(e) => { setAmount(e.target.value); setQuote(null); }} placeholder="0.00" autoComplete="off" />
+          <input id={`amount-${mode}`} className="amount-input" inputMode="decimal" value={amount} onChange={(e) => { setAmount(e.target.value); setQuote(null); }} placeholder="0.00" autoComplete="off" readOnly={Boolean(request)} aria-readonly={Boolean(request)} />
+          {request && <p className="field-hint">The amount is set by the request.</p>}
           {mode === 'send' && (
             <>
               <label htmlFor="note">3. Note (optional)</label>

@@ -51,6 +51,16 @@ None are `NEXT_PUBLIC_*`; secrets are never sent to the browser. `TRUST_PROXY=1`
 The worker must be running for deposits to appear and for sends and withdrawals to resolve. After downtime it resumes from
 its saved cursor, so a long outage means a long catch-up (about 2 minutes per 280,000 blocks on the public RPC).
 
+## Money requests
+A user can ask an accepted friend to pay them, with an optional note (Friends, then Money requests). The requester chooses an
+expiry in whole days: 1 to 365, default 7. Below 1 becomes 1 and above 365 becomes 365, each with a message on screen; text that
+is not a whole number becomes 7 with a message. Requests are never paid automatically: the friend presses Pay, which opens Send
+with the recipient, amount and note filled in and the amount locked, and the normal quote, 30-second confirm and send path.
+The server only accepts a payment for a request from its payer, to its requester, for its exact amount, while it is open, and
+links only one payment to it at a time. A failed payment makes the request payable again; a confirmed one marks it paid.
+Declining, cancelling and expiry never move money. Limits: at most 5 open requests per requester and friend, 20 new requests
+per user per hour, amounts and notes follow the same rules as sends.
+
 ## Limits
 - Per transfer: at most 100 USDC (demo maximum); amounts have at most 6 decimals. Notes are plain text, at most 140 characters.
 - Quotes last 30 seconds and are single-use. Sends go only to accepted friends. One unresolved transfer per wallet at a time

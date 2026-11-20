@@ -1,33 +1,42 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Avatar } from '../components/Avatar';
+import { MoneyTab } from './MoneyTab';
 import { EmptyState } from '../components/EmptyState';
 import { SubmitButton } from '../components/SubmitButton';
 import { acceptRequestAction, cancelRequestAction, declineRequestAction, sendRequestAction } from '../friend-actions';
 import { listFriendships, searchUsers } from '@/lib/friends';
+import { countIncomingMoneyRequests } from '@/lib/requests';
 import { requireUser } from '@/lib/session';
 
-export default async function FriendsPage({ searchParams }: { searchParams: Promise<{ q?: string; notice?: string; tab?: string }> }) {
+export default async function FriendsPage({ searchParams }: { searchParams: Promise<{ q?: string; notice?: string; tab?: string; kind?: string }> }) {
   const user = await requireUser();
   if (user.status !== 'active') redirect('/');
-  const { q = '', notice, tab } = await searchParams;
+  const { q = '', notice, tab, kind } = await searchParams;
   const showRequests = tab === 'requests';
+  const showMoney = tab === 'money';
+  const moneyIncoming = countIncomingMoneyRequests(user.id);
   const results = q ? searchUsers(user.id, q) : [];
   const { incoming, outgoing, accepted } = listFriendships(user.id);
 
   return (
     <>
       <h1>Friends</h1>
-      {notice && <p className="alert alert-info" role="status">{notice}</p>}
+      {notice && <p className={kind === 'error' ? 'alert alert-error' : 'alert alert-info'} role={kind === 'error' ? 'alert' : 'status'}>{notice}</p>}
 
       <nav className="subtabs" aria-label="Friends sections">
-        <Link href="/friends" className="subtab" aria-current={showRequests ? undefined : 'page'}>Friends</Link>
+        <Link href="/friends" className="subtab" aria-current={showRequests || showMoney ? undefined : 'page'}>Friends</Link>
         <Link href="/friends?tab=requests" className="subtab" aria-current={showRequests ? 'page' : undefined}>
           Friend requests{incoming.length > 0 && <span className="badge" aria-label={`${incoming.length} incoming`}>{incoming.length}</span>}
         </Link>
+        <Link href="/friends?tab=money" className="subtab" aria-current={showMoney ? 'page' : undefined}>
+          Money requests{moneyIncoming > 0 && <span className="badge" aria-label={`${moneyIncoming} incoming`}>{moneyIncoming}</span>}
+        </Link>
       </nav>
 
-      {showRequests ? (
+      {showMoney ? (
+        <MoneyTab userId={user.id} />
+      ) : showRequests ? (
         <>
       <div className="card">
         <h2>Incoming requests</h2>
