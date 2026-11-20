@@ -1,12 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import { formatUsdc, parseNote } from './amount';
 import { getUsdcBalance, publicClient } from './chain';
 import { db } from './db';
-import { payments, quotes, wallets } from './db/schema';
+import { moneyRequests, payments, quotes, wallets } from './db/schema';
 import { areAcceptedFriends } from './friends';
 import { fail, type Failure, validateWithdrawAddress } from './quotes';
 import { hit, RATE_LIMITS } from './ratelimit';
+import { stateOf } from './requests';
 import { getWalletAdapter } from './wallet-adapter';
 import { ProviderRejectedError, type WalletAdapter } from './wallet-adapter/types';
 
@@ -39,7 +40,7 @@ const isUnique = (e: unknown) => e instanceof Error && 'code' in e && String(e.c
  */
 export async function submitPayment(
   userId: string,
-  input: { quoteId: string; idempotencyKey: string; note?: unknown },
+  input: { quoteId: string; idempotencyKey: string; note?: unknown; requestId?: unknown },
   deps: PaymentDeps = realDeps(),
 ): Promise<PaymentResult> {
   if (!KEY_RE.test(String(input.idempotencyKey ?? ''))) return fail(422, 'invalid_key', 'A valid idempotency key is required.');
@@ -50,7 +51,9 @@ export async function submitPayment(
   const quote = db.select().from(quotes).where(and(eq(quotes.id, String(input.quoteId ?? '')), eq(quotes.userId, userId))).get();
   if (!quote) return fail(404, 'quote_not_found', 'Quote not found. Request a new quote.');
   const kind = quote.op === 'send' ? 'send' : 'withdrawal';
-  const payloadHash = createHash('sha256').update(JSON.stringify([kind, quote.recipientKey, quote.amountRaw, note.note])).digest('hex');
+  // A payment that pays a money request is tied to it in the hash; ordinary payments hash exactly as before.
+  const requestId = input.requestId ? String(input.requestId) : null;
+  const payloadHash = createHash('sha256').update(JSON.stringify(requestId ? [kind, quote.recipientKey, quote.amountRaw, note.note, requestId] : [kind, quote.recipientKey, quote.amountRaw, note.note])).digest('hex');
 
   // Replays come first so they never need a live quote, a balance, or rate-limit budget.
   const existing = db.select().from(payments).where(and(eq(payments.userId, userId), eq(payments.idempotencyKey, key))).get();
@@ -65,6 +68,14 @@ export async function submitPayment(
   }
   if (quote.consumedAt) return fail(410, 'quote_used', 'This quote was already used. Request a new quote.');
   if (deps.now() > quote.expiresAt) return fail(410, 'quote_expired', 'The quote expired. Review the new quote and confirm again.');
+
+  // Paying a money request: only its payer, only while it is open, only to its requester, only for its exact amount.
+  if (requestId) {
+    const req = db.select().from(moneyRequests).where(and(eq(moneyRequests.id, requestId), eq(moneyRequests.payerId, userId))).get();
+    if (!req || stateOf(req, deps.now()) !== 'pending' || kind !== 'send' || quote.recipientKey !== req.requesterId || quote.amountRaw !== req.amountRaw) {
+      return fail(409, 'request_unavailable', 'This money request can no longer be paid. It may have expired, been cancelled, or already be paid.');
+    }
+  }
 
   const sender = db.select().from(wallets).where(eq(wallets.userId, userId)).get();
   if (!sender) return fail(409, 'no_wallet', 'Your wallet is not ready.');
@@ -96,6 +107,15 @@ export async function submitPayment(
     db.transaction((tx) => {
       const consumed = tx.update(quotes).set({ consumedAt: deps.now() }).where(and(eq(quotes.id, quote.id), isNull(quotes.consumedAt))).run();
       if (consumed.changes !== 1) throw new Error('QUOTE_USED');
+      if (requestId) {
+        // Atomic claim: only one payment can be linked to an open request at a time (a failed one can be replaced).
+        const claimed = tx
+          .update(moneyRequests)
+          .set({ paymentId: id })
+          .where(and(eq(moneyRequests.id, requestId), eq(moneyRequests.payerId, userId), eq(moneyRequests.status, 'pending'), gt(moneyRequests.expiresAt, deps.now()), sql`(${moneyRequests.paymentId} is null or ${moneyRequests.paymentId} in (select id from payments where status = 'failed'))`))
+          .run();
+        if (claimed.changes !== 1) throw new Error('REQUEST_UNAVAILABLE');
+      }
       tx.insert(payments)
         .values({
           id, userId, kind, fromAddress: sender.address, recipientUserId, toAddress,
@@ -107,6 +127,7 @@ export async function submitPayment(
     });
   } catch (e) {
     if (e instanceof Error && e.message === 'QUOTE_USED') return fail(410, 'quote_used', 'This quote was already used. Request a new quote.');
+    if (e instanceof Error && e.message === 'REQUEST_UNAVAILABLE') return fail(409, 'request_unavailable', 'This money request can no longer be paid. It may have expired, been cancelled, or already be paid.');
     if (isUnique(e)) {
       const msg = (e as Error).message;
       if (msg.includes('idempotency_key')) {

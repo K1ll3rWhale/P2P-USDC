@@ -11,6 +11,8 @@ export const RATE_LIMITS = {
   shortWindowMs: 60 * 1000,
   quotesPerMinutePerUser: 30,
   sendsPerMinutePerUser: 10, // sends and withdrawals share this limit
+  longWindowMs: 60 * 60 * 1000,
+  requestsPerHourPerUser: 20, // money requests created
 } as const;
 
 /** Records an attempt for `key` and returns false (without recording) once `max` is reached in the window. */

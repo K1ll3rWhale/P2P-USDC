@@ -159,3 +159,27 @@ export const payments = sqliteTable(
     index('payments_user_idx').on(t.userId, t.createdAt),
   ],
 );
+
+// A request from `requesterId` asking `payerId` (an accepted friend) to pay `amountRaw`. Paying one uses the normal
+// quote and send path; `paymentId` links the send that is paying it. "Expired", "paying" and "paid" are derived
+// from expiresAt and the linked payment's status, so no worker has to touch this table.
+export const moneyRequests = sqliteTable(
+  'money_requests',
+  {
+    id: text('id').primaryKey(),
+    requesterId: text('requester_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    payerId: text('payer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    amountRaw: text('amount_raw').notNull(),
+    note: text('note'),
+    status: text('status', { enum: ['pending', 'declined', 'cancelled'] }).notNull().default('pending'),
+    paymentId: text('payment_id'),
+    createdAt: integer('created_at').notNull(),
+    expiresAt: integer('expires_at').notNull(),
+    respondedAt: integer('responded_at'),
+  },
+  (t) => [
+    index('money_requests_payer_idx').on(t.payerId, t.createdAt),
+    index('money_requests_requester_idx').on(t.requesterId, t.createdAt),
+    check('money_requests_distinct', sql`${t.requesterId} <> ${t.payerId}`),
+  ],
+);

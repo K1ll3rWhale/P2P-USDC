@@ -10,10 +10,10 @@ export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 });
   if (user.status !== 'active') return NextResponse.json({ error: 'Wallet not ready', code: 'no_wallet' }, { status: 409 });
-  const body = (await req.json().catch(() => null)) as { quoteId?: string; idempotencyKey?: string; note?: unknown } | null;
+  const body = (await req.json().catch(() => null)) as { quoteId?: string; idempotencyKey?: string; note?: unknown; requestId?: unknown } | null;
   if (!body) return NextResponse.json({ error: 'Invalid request', code: 'invalid_request' }, { status: 400 });
 
-  const r = await submitPayment(user.id, { quoteId: String(body.quoteId ?? ''), idempotencyKey: String(body.idempotencyKey ?? ''), note: body.note });
+  const r = await submitPayment(user.id, { quoteId: String(body.quoteId ?? ''), idempotencyKey: String(body.idempotencyKey ?? ''), note: body.note, requestId: body.requestId });
   if (!r.ok) return failure(r);
   return NextResponse.json(
     { replay: r.replay, payment: { id: r.payment.id, status: r.payment.status, kind: r.payment.kind } },
