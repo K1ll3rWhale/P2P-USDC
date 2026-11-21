@@ -11,6 +11,7 @@ export const EXPIRY_MIN_DAYS = 1;
 export const EXPIRY_DEFAULT_DAYS = 7;
 export const EXPIRY_MAX_DAYS = 365;
 export const MAX_PENDING_PER_PAIR = 5;
+export const REMIND_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type ExpiryResult = { days: number; warning?: string };
@@ -111,6 +112,7 @@ export function cancelMoneyRequest(actorId: string, id: string, now: number = Da
 
 export type RequestView = {
   id: string;
+  lastRemindedAt: number | null;
   otherUsername: string;
   amount: string; // formatted USDC
   note: string | null;
@@ -133,6 +135,7 @@ export function listMoneyRequests(actorId: string, now: number = Date.now()) {
       mine,
       v: {
         id: r.id,
+        lastRemindedAt: r.lastRemindedAt,
         otherUsername: names.get(mine ? r.payerId : r.requesterId) ?? 'unknown',
         amount: formatUsdc(r.amountRaw),
         note: r.note,
@@ -144,10 +147,32 @@ export function listMoneyRequests(actorId: string, now: number = Date.now()) {
   });
   const open = (s: RequestState) => s === 'pending' || s === 'paying';
   return {
-    incoming: view.filter((x) => !x.mine && open(x.v.state)).map((x) => x.v),
+    incoming: view
+      .filter((x) => !x.mine && open(x.v.state))
+      .map((x) => x.v)
+      .sort((a, b) => (b.lastRemindedAt ?? 0) - (a.lastRemindedAt ?? 0) || b.createdAt - a.createdAt), // a fresh reminder floats to the top
     outgoing: view.filter((x) => x.mine && open(x.v.state)).map((x) => x.v),
     recent: view.filter((x) => !open(x.v.state)).slice(0, 10).map((x) => ({ ...x.v, mine: x.mine })),
   };
+}
+
+/** Only the requester may remind, once per 24 hours per request, and only while the request is open and unpaid. */
+export function remindMoneyRequest(actorId: string, id: string, now: number = Date.now()): RequestResult {
+  const row = loadForActor(actorId, id);
+  if (!row || row.requesterId !== actorId || stateOf(row, now) !== 'pending') return NOT_FOUND;
+  if (row.lastRemindedAt && now - row.lastRemindedAt < REMIND_COOLDOWN_MS) {
+    return { ok: false, error: 'You already sent a reminder in the last 24 hours.' };
+  }
+  const r = db.update(moneyRequests).set({ lastRemindedAt: now }).where(and(eq(moneyRequests.id, id), eq(moneyRequests.status, 'pending'))).run();
+  return r.changes ? { ok: true } : NOT_FOUND;
+}
+
+/** For "Ask again": the actor's own earlier request (any state), to prefill a new one. */
+export function getOwnRequestForReuse(requesterId: string, id: string) {
+  const row = db.select().from(moneyRequests).where(and(eq(moneyRequests.id, id), eq(moneyRequests.requesterId, requesterId))).get();
+  if (!row) return null;
+  const payer = db.select({ username: users.username }).from(users).where(eq(users.id, row.payerId)).get();
+  return payer ? { friend: payer.username, amount: formatUsdc(row.amountRaw), note: row.note } : null;
 }
 
 export const countIncomingMoneyRequests = (actorId: string, now: number = Date.now()) =>

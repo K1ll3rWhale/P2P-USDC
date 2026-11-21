@@ -50,6 +50,13 @@ export const getCurrentUser = cache(async () => {
   return row ?? null;
 });
 
+/** The id of the session making this request (so it can be kept when others are signed out). */
+export const getCurrentSessionId = cache(async (): Promise<string | null> => {
+  const token = (await cookies()).get(COOKIE)?.value;
+  if (!token) return null;
+  return db.select({ id: sessions.id }).from(sessions).where(and(eq(sessions.tokenHash, sha256(token)), gt(sessions.expiresAt, Date.now()))).get()?.id ?? null;
+});
+
 export async function requireUser() {
   const user = await getCurrentUser();
   if (!user) redirect('/login');

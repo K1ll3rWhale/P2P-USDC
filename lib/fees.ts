@@ -24,3 +24,17 @@ export function estimateFeeRaw(): bigint {
   const fees = rows.map((r) => BigInt(r.fee!)).filter((f) => f > 0n);
   return fees.length ? median(fees) : DEFAULT_ESTIMATED_FEE_RAW;
 }
+
+/** The lowest and highest of the same recent actual fees the estimate uses, for display only. Null when none exist. */
+export function recentFeeRange(): { min: bigint; max: bigint } | null {
+  const rows = db
+    .select({ fee: payments.actualFeeRaw })
+    .from(payments)
+    .where(and(eq(payments.status, 'confirmed'), isNotNull(payments.actualFeeRaw)))
+    .orderBy(desc(payments.resolvedAt))
+    .limit(FEE_SAMPLE_SIZE)
+    .all();
+  const fees = rows.map((r) => BigInt(r.fee!)).filter((f) => f > 0n);
+  if (!fees.length) return null;
+  return { min: fees.reduce((a, b) => (a < b ? a : b)), max: fees.reduce((a, b) => (a > b ? a : b)) };
+}

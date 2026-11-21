@@ -11,6 +11,8 @@ export const RATE_LIMITS = {
   shortWindowMs: 60 * 1000,
   quotesPerMinutePerUser: 30,
   sendsPerMinutePerUser: 10, // sends and withdrawals share this limit
+  passwordChangesPerWindow: 5, // per user, per 15-minute window
+  exportsPerMinutePerUser: 10,
   longWindowMs: 60 * 60 * 1000,
   requestsPerHourPerUser: 20, // money requests created
 } as const;

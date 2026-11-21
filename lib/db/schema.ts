@@ -13,6 +13,7 @@ export const users = sqliteTable('users', {
   status: text('status', { enum: ['pending', 'active'] }).notNull().default('pending'),
   provisioningError: text('provisioning_error'),
   provisioningStartedAt: integer('provisioning_started_at'),
+  activitySeenAt: integer('activity_seen_at'), // when the user last opened Activity (unread badges); null = never
   createdAt: integer('created_at').notNull(),
 });
 
@@ -176,10 +177,25 @@ export const moneyRequests = sqliteTable(
     createdAt: integer('created_at').notNull(),
     expiresAt: integer('expires_at').notNull(),
     respondedAt: integer('responded_at'),
+    lastRemindedAt: integer('last_reminded_at'),
   },
   (t) => [
     index('money_requests_payer_idx').on(t.payerId, t.createdAt),
     index('money_requests_requester_idx').on(t.requesterId, t.createdAt),
     check('money_requests_distinct', sql`${t.requesterId} <> ${t.payerId}`),
   ],
+);
+
+// A small history of friendship changes that would otherwise leave no trace (a decline or cancel deletes the pair row).
+// Both people involved can see an event: the actor did `type` to the target.
+export const friendEvents = sqliteTable(
+  'friend_events',
+  {
+    id: text('id').primaryKey(),
+    actorId: text('actor_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    targetId: text('target_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    type: text('type', { enum: ['accepted', 'declined', 'cancelled', 'removed'] }).notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [index('friend_events_actor_idx').on(t.actorId, t.createdAt), index('friend_events_target_idx').on(t.targetId, t.createdAt)],
 );
