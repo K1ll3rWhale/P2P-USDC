@@ -9,11 +9,11 @@ import { Spinner } from './Spinner';
 const NOTE_MAX = 140;
 
 /** Ask an accepted friend to pay you. Expiry is in whole days (1 to 365, default 7); the server clamps and explains. */
-export function RequestForm({ friends }: { friends: { id: string; username: string }[] }) {
+export function RequestForm({ friends, prefill }: { friends: { id: string; username: string }[]; prefill?: { friend: string; amount: string; note: string | null } }) {
   const [state, action, pending] = useActionState(createRequestAction, undefined);
-  const [friend, setFriend] = useState(friends[0]?.username ?? '');
-  const [amount, setAmount] = useState('');
-  const [note, setNote] = useState('');
+  const [friend, setFriend] = useState(prefill?.friend ?? friends[0]?.username ?? '');
+  const [amount, setAmount] = useState(prefill?.amount ?? '');
+  const [note, setNote] = useState(prefill?.note ?? '');
   const [days, setDays] = useState('');
 
   useEffect(() => {
@@ -32,6 +32,7 @@ export function RequestForm({ friends }: { friends: { id: string; username: stri
   return (
     <div className="card">
       <h2>Request money</h2>
+      {prefill && <p className="alert alert-info" role="status">Asking again: check the details and send.</p>}
       <form action={action}>
         <fieldset style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
           <legend className="label" style={{ padding: 0, marginTop: 0 }}>Ask who?</legend>

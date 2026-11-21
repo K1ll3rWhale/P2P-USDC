@@ -1,20 +1,22 @@
 import Link from 'next/link';
 import { Avatar } from '../components/Avatar';
 import { EmptyState } from '../components/EmptyState';
-import { fmtAmount, utc } from '../components/format';
+import { fmtAmount, timeLeft, utc } from '../components/format';
 import { RequestForm } from '../components/RequestForm';
 import { RequestPill } from '../components/RequestPill';
 import { SubmitButton } from '../components/SubmitButton';
-import { cancelMoneyRequestAction, declineMoneyRequestAction } from '../request-actions';
+import { cancelMoneyRequestAction, declineMoneyRequestAction, remindMoneyRequestAction } from '../request-actions';
 import { listAcceptedFriends } from '@/lib/friends';
-import { listMoneyRequests } from '@/lib/requests';
+import { getOwnRequestForReuse, listMoneyRequests, REMIND_COOLDOWN_MS } from '@/lib/requests';
 
 /** The "Money requests" sub-tab: ask a friend for USDC, answer requests, and see recent ones. */
-export function MoneyTab({ userId }: { userId: string }) {
-  const money = listMoneyRequests(userId);
+export function MoneyTab({ userId, againId }: { userId: string; againId?: string }) {
+  const now = Date.now();
+  const money = listMoneyRequests(userId, now);
+  const prefill = againId ? getOwnRequestForReuse(userId, againId) : null;
   return (
     <>
-      <RequestForm friends={listAcceptedFriends(userId)} />
+      <RequestForm key={againId ?? 'new'} friends={listAcceptedFriends(userId)} prefill={prefill ?? undefined} />
 
       <div className="card">
         <h2>Requests to you</h2>
@@ -28,7 +30,7 @@ export function MoneyTab({ userId }: { userId: string }) {
                 <div className="item-main">
                   <div className="item-title">@{r.otherUsername} asks for {fmtAmount(r.amount)} USDC</div>
                   {r.note && <div className="item-sub">Note: “{r.note}”</div>}
-                  <div className="activity-meta"><span>Expires {utc(r.expiresAt)}</span> <RequestPill state={r.state} /></div>
+                  <div className="activity-meta"><span>Expires {timeLeft(r.expiresAt, now)} ({utc(r.expiresAt)})</span> <RequestPill state={r.state} />{r.lastRemindedAt ? <span className="pill pill-new">Reminder {utc(r.lastRemindedAt)}</span> : null}</div>
                 </div>
                 {r.state === 'pending' && (
                   <div className="item-actions">
@@ -57,13 +59,23 @@ export function MoneyTab({ userId }: { userId: string }) {
                 <div className="item-main">
                   <div className="item-title">{fmtAmount(r.amount)} USDC from @{r.otherUsername}</div>
                   {r.note && <div className="item-sub">Note: “{r.note}”</div>}
-                  <div className="activity-meta"><span>Expires {utc(r.expiresAt)}</span> <RequestPill state={r.state} /></div>
+                  <div className="activity-meta"><span>Expires {timeLeft(r.expiresAt, now)} ({utc(r.expiresAt)})</span> <RequestPill state={r.state} />{r.lastRemindedAt ? <span className="pill pill-new">Reminder {utc(r.lastRemindedAt)}</span> : null}</div>
                 </div>
                 {r.state === 'pending' && (
-                  <form action={cancelMoneyRequestAction}>
-                    <input type="hidden" name="id" value={r.id} />
-                    <SubmitButton className="secondary btn-sm">Cancel</SubmitButton>
-                  </form>
+                  <div className="item-actions">
+                    {r.lastRemindedAt && now - r.lastRemindedAt < REMIND_COOLDOWN_MS ? (
+                      <span className="item-sub">Reminded</span>
+                    ) : (
+                      <form action={remindMoneyRequestAction}>
+                        <input type="hidden" name="id" value={r.id} />
+                        <SubmitButton className="secondary btn-sm" pendingText="Sending…">Remind</SubmitButton>
+                      </form>
+                    )}
+                    <form action={cancelMoneyRequestAction}>
+                      <input type="hidden" name="id" value={r.id} />
+                      <SubmitButton className="secondary btn-sm">Cancel</SubmitButton>
+                    </form>
+                  </div>
                 )}
               </li>
             ))}
@@ -83,6 +95,9 @@ export function MoneyTab({ userId }: { userId: string }) {
                   {r.note && <div className="item-sub">Note: “{r.note}”</div>}
                 </div>
                 <RequestPill state={r.state} />
+                {r.mine && (r.state === 'declined' || r.state === 'expired' || r.state === 'cancelled') && (
+                  <Link className="btn btn-secondary btn-sm" href={`/friends?tab=money&again=${encodeURIComponent(r.id)}`}>Ask again</Link>
+                )}
               </li>
             ))}
           </ul>

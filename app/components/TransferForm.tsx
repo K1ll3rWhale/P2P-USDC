@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { Avatar } from './Avatar';
 import { EmptyState } from './EmptyState';
-import { fmtAmount, fmtFee } from './format';
+import { fmtAmount, fmtFee, fromRaw, toRaw } from './format';
 import { REFRESH_EVENT } from './LiveBalance';
 import { Spinner } from './Spinner';
 
@@ -25,11 +25,23 @@ const newKey = () =>
  * Flow: enter details, get a server quote (30 s), review it, confirm. An expired quote is refreshed and must be
  * confirmed again. Notes and names are rendered as plain text by React.
  */
-export function TransferForm({ mode, friends = [], request }: { mode: 'send' | 'withdraw'; friends?: Friend[]; request?: PayingRequest }) {
+const MAX_DEMO_RAW = 100_000_000n; // the 100 USDC demo maximum per transfer
+
+export function TransferForm({
+  mode, friends = [], request, recent = [], feeEstimate, feeRange,
+}: {
+  mode: 'send' | 'withdraw';
+  friends?: Friend[];
+  request?: PayingRequest;
+  recent?: string[]; // usernames sent to most recently, listed first
+  feeEstimate?: string; // formatted estimated fee, for the Max button
+  feeRange?: { min: string; max: string } | null; // recent actual fees, shown with the quote
+}) {
   const [recipient, setRecipient] = useState(request?.username ?? friends[0]?.username ?? '');
   const [amount, setAmount] = useState(request?.amount ?? '');
   const [note, setNote] = useState(request?.note ?? '');
   const [done, setDone] = useState(false);
+  const [maxBusy, setMaxBusy] = useState(false);
   const router = useRouter();
   const [quote, setQuote] = useState<Quote | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
@@ -96,9 +108,35 @@ export function TransferForm({ mode, friends = [], request }: { mode: 'send' | '
     setBusy(false);
   }
 
+  // "Use max": the current balance minus the estimated network fee, capped at the demo maximum. Only fills the field.
+  async function onMax() {
+    if (!feeEstimate) return;
+    setMaxBusy(true);
+    setMessage(null);
+    try {
+      const res = await fetch('/api/summary?limit=1', { cache: 'no-store' });
+      const json = (await res.json()) as { balance?: { formatted: string } | null };
+      const bal = json.balance ? toRaw(json.balance.formatted) : null;
+      const fee = toRaw(feeEstimate);
+      if (bal === null || fee === null) {
+        setMessage({ kind: 'error', text: 'Could not read your balance right now. Enter an amount instead.' });
+      } else if (bal <= fee) {
+        setMessage({ kind: 'error', text: 'Your balance does not cover the estimated network fee yet.' });
+      } else {
+        const max = bal - fee > MAX_DEMO_RAW ? MAX_DEMO_RAW : bal - fee;
+        setAmount(fromRaw(max));
+        setQuote(null);
+      }
+    } catch {
+      setMessage({ kind: 'error', text: 'Could not read your balance right now. Enter an amount instead.' });
+    }
+    setMaxBusy(false);
+  }
+
   const expired = quote !== null && secondsLeft === 0;
   const label = mode === 'send' ? 'Send' : 'Withdraw';
   const noFriends = mode === 'send' && friends.length === 0;
+  const ordered = [...friends].sort((a, b) => Number(recent.includes(b.username)) - Number(recent.includes(a.username)) || recent.indexOf(a.username) - recent.indexOf(b.username));
   const showForm = !done;
 
   return (
@@ -114,7 +152,7 @@ export function TransferForm({ mode, friends = [], request }: { mode: 'send' | '
             <fieldset style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
               <legend className="label" style={{ padding: 0, marginTop: 0 }}>1. Choose a friend</legend>
               <div className="choice-list" role="radiogroup">
-                {friends.map((f) => (
+                {ordered.map((f) => (
                   <label key={f.id} className="choice">
                     <input
                       type="radio"
@@ -125,6 +163,7 @@ export function TransferForm({ mode, friends = [], request }: { mode: 'send' | '
                     />
                     <Avatar name={f.username} />
                     @{f.username}
+                    {!request && recent.includes(f.username) && <span className="recent-tag">Recent</span>}
                   </label>
                 ))}
               </div>
@@ -138,6 +177,11 @@ export function TransferForm({ mode, friends = [], request }: { mode: 'send' | '
           <label htmlFor={`amount-${mode}`}>{mode === 'send' ? '2. ' : ''}Amount (USDC the recipient receives)</label>
           <input id={`amount-${mode}`} className="amount-input" inputMode="decimal" value={amount} onChange={(e) => { setAmount(e.target.value); setQuote(null); }} placeholder="0.00" autoComplete="off" readOnly={Boolean(request)} aria-readonly={Boolean(request)} />
           {request && <p className="field-hint">The amount is set by the request.</p>}
+          {!request && feeEstimate && (
+            <button type="button" className="secondary btn-sm max-btn" onClick={onMax} disabled={busy || maxBusy}>
+              {maxBusy ? <><Spinner /> Checking balance…</> : 'Use max'}
+            </button>
+          )}
           {mode === 'send' && (
             <>
               <label htmlFor="note">3. Note (optional)</label>
@@ -168,7 +212,7 @@ export function TransferForm({ mode, friends = [], request }: { mode: 'send' | '
             <div className="line"><dt>Estimated network fee</dt><dd>≈ {fmtFee(quote.estimatedFee)} USDC</dd></div>
             <div className="line"><dt>Estimated total debit</dt><dd>{fmtAmount(quote.estimatedTotal)} USDC</dd></div>
           </dl>
-          <p className="field-hint">The network fee is an estimate; the actual fee is recorded after sending.</p>
+          <p className="field-hint">The network fee is an estimate; the actual fee is recorded after sending.{feeRange ? ` Recent actual fees: ${fmtFee(feeRange.min)} to ${fmtFee(feeRange.max)} USDC.` : ''}</p>
           <p className={expired ? 'countdown expired' : 'countdown'}>{expired ? 'This quote expired.' : `Quote valid for ${secondsLeft}s`}</p>
           <button type="button" className="btn-primary btn-block" onClick={expired ? getQuote : onConfirm} disabled={busy}>
             {busy ? <><Spinner /> Submitting…</> : expired ? 'Refresh quote' : `Confirm ${label.toLowerCase()}`}

@@ -4,20 +4,32 @@ import { Avatar } from '../components/Avatar';
 import { MoneyTab } from './MoneyTab';
 import { EmptyState } from '../components/EmptyState';
 import { SubmitButton } from '../components/SubmitButton';
-import { acceptRequestAction, cancelRequestAction, declineRequestAction, sendRequestAction } from '../friend-actions';
-import { listFriendships, searchUsers } from '@/lib/friends';
+import { utc } from '../components/format';
+import { acceptRequestAction, cancelRequestAction, declineRequestAction, removeFriendAction, sendRequestAction } from '../friend-actions';
+import { listFriendEvents, listFriendships, searchUsers, type FriendEventView } from '@/lib/friends';
 import { countIncomingMoneyRequests } from '@/lib/requests';
 import { requireUser } from '@/lib/session';
 
-export default async function FriendsPage({ searchParams }: { searchParams: Promise<{ q?: string; notice?: string; tab?: string; kind?: string }> }) {
+function describeEvent(e: FriendEventView): string {
+  const who = '@' + e.otherUsername;
+  switch (e.type) {
+    case 'accepted': return e.mine ? `You accepted ${who}'s request` : `${who} accepted your request`;
+    case 'declined': return e.mine ? `You declined ${who}'s request` : `${who} declined your request`;
+    case 'cancelled': return e.mine ? `You cancelled your request to ${who}` : `${who} cancelled their request to you`;
+    case 'removed': return e.mine ? `You removed ${who} as a friend` : `${who} removed you as a friend`;
+  }
+}
+
+export default async function FriendsPage({ searchParams }: { searchParams: Promise<{ q?: string; notice?: string; tab?: string; kind?: string; again?: string }> }) {
   const user = await requireUser();
   if (user.status !== 'active') redirect('/');
-  const { q = '', notice, tab, kind } = await searchParams;
+  const { q = '', notice, tab, kind, again } = await searchParams;
   const showRequests = tab === 'requests';
   const showMoney = tab === 'money';
   const moneyIncoming = countIncomingMoneyRequests(user.id);
   const results = q ? searchUsers(user.id, q) : [];
   const { incoming, outgoing, accepted } = listFriendships(user.id);
+  const history = showRequests ? listFriendEvents(user.id) : [];
 
   return (
     <>
@@ -35,7 +47,7 @@ export default async function FriendsPage({ searchParams }: { searchParams: Prom
       </nav>
 
       {showMoney ? (
-        <MoneyTab userId={user.id} />
+        <MoneyTab userId={user.id} againId={again} />
       ) : showRequests ? (
         <>
       <div className="card">
@@ -69,6 +81,25 @@ export default async function FriendsPage({ searchParams }: { searchParams: Prom
                 <Avatar name={r.otherUsername} />
                 <div className="item-main"><div className="item-title">@{r.otherUsername}</div><div className="item-sub">Waiting for them to accept</div></div>
                 <form action={cancelRequestAction}><input type="hidden" name="id" value={r.id} /><SubmitButton className="secondary">Cancel</SubmitButton></form>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>History</h2>
+        {history.length === 0 ? (
+          <EmptyState title="Nothing yet">Accepted, declined, cancelled and removed friendships show up here.</EmptyState>
+        ) : (
+          <ul className="rows">
+            {history.map((e) => (
+              <li key={e.id} className="item">
+                <Avatar name={e.otherUsername} />
+                <div className="item-main">
+                  <div className="item-title" style={{ fontWeight: 500 }}>{describeEvent(e)}</div>
+                  <div className="item-sub">{utc(e.createdAt)}</div>
+                </div>
               </li>
             ))}
           </ul>
@@ -118,6 +149,16 @@ export default async function FriendsPage({ searchParams }: { searchParams: Prom
               <li key={r.id} className="item">
                 <Avatar name={r.otherUsername} />
                 <div className="item-main"><div className="item-title">@{r.otherUsername}</div></div>
+                <details className="confirm">
+                  <summary>Remove</summary>
+                  <div className="confirm-body">
+                    <p style={{ margin: '0 0 8px' }}>Remove @{r.otherUsername}? You will not be able to send to each other until you are friends again.</p>
+                    <form action={removeFriendAction}>
+                      <input type="hidden" name="id" value={r.id} />
+                      <SubmitButton className="btn-danger btn-sm" pendingText="Removing…">Yes, remove</SubmitButton>
+                    </form>
+                  </div>
+                </details>
               </li>
             ))}
           </ul>

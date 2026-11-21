@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { cancelMoneyRequest, createMoneyRequest, declineMoneyRequest } from '@/lib/requests';
+import { cancelMoneyRequest, createMoneyRequest, declineMoneyRequest, remindMoneyRequest } from '@/lib/requests';
 import { requireUser } from '@/lib/session';
 
 const field = (fd: FormData, k: string) => (typeof fd.get(k) === 'string' ? (fd.get(k) as string) : '');
@@ -31,4 +31,9 @@ export async function cancelMoneyRequestAction(fd: FormData) {
   const user = await requireUser();
   const r = cancelMoneyRequest(user.id, field(fd, 'id'));
   back(r.ok, r.ok ? 'Request cancelled.' : r.error);
+}
+export async function remindMoneyRequestAction(fd: FormData) {
+  const user = await requireUser();
+  const r = remindMoneyRequest(user.id, field(fd, 'id'));
+  back(r.ok, r.ok ? 'Reminder sent.' : r.error);
 }

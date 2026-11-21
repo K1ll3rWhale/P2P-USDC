@@ -1,7 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { acceptRequest, cancelRequest, declineRequest, sendRequest, type FriendResult } from '@/lib/friends';
+import { acceptRequest, cancelRequest, declineRequest, removeFriend, sendRequest, type FriendResult } from '@/lib/friends';
 import { requireUser } from '@/lib/session';
 
 const field = (fd: FormData, k: string) => (typeof fd.get(k) === 'string' ? (fd.get(k) as string) : '');
@@ -24,4 +24,9 @@ export async function declineRequestAction(fd: FormData) {
 export async function cancelRequestAction(fd: FormData) {
   const user = await requireUser();
   back(cancelRequest(user.id, field(fd, 'id')), 'Request cancelled.');
+}
+export async function removeFriendAction(fd: FormData) {
+  const user = await requireUser();
+  const r = removeFriend(user.id, field(fd, 'id'));
+  redirect('/friends?notice=' + encodeURIComponent(r.ok ? 'Friend removed.' : r.error) + (r.ok ? '' : '&kind=error'));
 }

@@ -61,6 +61,20 @@ links only one payment to it at a time. A failed payment makes the request payab
 Declining, cancelling and expiry never move money. Limits: at most 5 open requests per requester and friend, 20 new requests
 per user per hour, amounts and notes follow the same rules as sends.
 
+## Everyday features
+- **Badges and Home card:** the Activity tab shows how many incoming transfers or resolved sends you have not looked at yet (opening
+  Activity clears it); Friends shows incoming friend and money requests. Home shows a card when something is waiting.
+- **Activity:** filter by type, status and UTC date (over your latest 200 items) and download **everything** (up to 2000 items) as CSV.
+  Notes and names that start with a spreadsheet formula character are prefixed with an apostrophe so they cannot run. Exports are
+  limited to 10 per minute.
+- **Settings** (click your username): change your password (needs the current one, 5 attempts per 15 minutes; it signs out your other
+  sessions) and see or sign out your other sessions. There is still no email, so no password reset.
+- **Friends:** Remove a friend (either side, with a confirm step). Refused while a send between you is unresolved or a money request
+  between you is open. Money requests: time left, one reminder per request per 24 hours (it floats to the top of the payer's list),
+  and "Ask again" on a declined, cancelled or expired request.
+- **Send:** "Use max" fills your balance minus the estimated network fee (capped at 100 USDC), recent recipients are listed first, and
+  the quote shows the range of recent actual fees next to the estimate.
+
 ## Limits
 - Per transfer: at most 100 USDC (demo maximum); amounts have at most 6 decimals. Notes are plain text, at most 140 characters.
 - Quotes last 30 seconds and are single-use. Sends go only to accepted friends. One unresolved transfer per wallet at a time
@@ -81,7 +95,8 @@ per user per hour, amounts and notes follow the same rules as sends.
 - **No email verification or password reset.** Demo accounts share a documented testnet password unless `DEMO_PASSWORD` is set.
 - **Security headers:** every response carries a per-request-nonce Content-Security-Policy (scripts only with the nonce, same-origin connections, no framing), `nosniff`, `Referrer-Policy: same-origin` and `X-Frame-Options: DENY` (set in `proxy.ts`, policy in `lib/csp.ts`). The CSP has not been checked against every page in a real browser; if a page misbehaves, set `CSP_REPORT_ONLY=1` to send it as report-only. Single SQLite file, single node. HTTPS is expected to be terminated by a
   proxy; the session cookie is `Secure` only when the request is HTTPS.
-- **Friend declines and cancels delete the request** (no history is kept).
+- **Friend declines and cancels still delete the request row**, but a short history (accepted, declined, cancelled, removed) is kept
+  and shown under Friends, Friend requests.
 - `npm audit` reports 4 moderate findings, all in the dev-only `drizzle-kit` toolchain (old esbuild); production dependencies: 0.
 - The browser UI was reviewed by reading the code and exercised over HTTP, not by an automated browser test.
 

@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { logoutAction } from './actions';
 import { NavTabs } from './components/NavTabs';
 import './globals.css';
+import { unreadActivityCount, waitingCounts } from '@/lib/notifications';
 import { getCurrentUser } from '@/lib/session';
 
 export const metadata: Metadata = { title: 'P2P USDC (Base Sepolia testnet)' };
@@ -11,6 +12,7 @@ export const viewport: Viewport = { width: 'device-width', initialScale: 1 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const user = await getCurrentUser();
+  const badges: Record<string, number> = user ? { '/activity': unreadActivityCount(user.id), '/friends': waitingCounts(user.id).total } : {};
   return (
     <html lang="en">
       <body>
@@ -25,7 +27,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               </Link>
               {user ? (
                 <div className="userbox">
-                  <span className="username">@{user.username}</span>
+                  <Link href="/settings" className="username" title="Settings">@{user.username}</Link>
                   <form action={logoutAction}>
                     <button className="link" type="submit">
                       Log out
@@ -39,7 +41,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                 </nav>
               )}
             </div>
-            {user && <NavTabs />}
+            {user && <NavTabs badges={badges} />}
           </div>
         </header>
         <main>{children}</main>

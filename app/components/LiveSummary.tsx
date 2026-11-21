@@ -10,7 +10,18 @@ import { clock, fmtAmount } from './format';
 const POLL_MS = 10_000;
 const OLD_MS = 45_000; // a balance older than this is flagged as stale
 
-export function LiveSummary({ initial, limit, showBalance }: { initial: Summary; limit: number; showBalance: boolean }) {
+type TypeFilter = 'all' | 'send' | 'receipt' | 'deposit' | 'withdrawal';
+type StatusFilter = 'all' | 'pending' | 'confirmed' | 'failed';
+const TYPE_CHIPS: { value: TypeFilter; label: string }[] = [
+  { value: 'all', label: 'All' }, { value: 'send', label: 'Sent' }, { value: 'receipt', label: 'Received' },
+  { value: 'deposit', label: 'Deposits' }, { value: 'withdrawal', label: 'Withdrawals' },
+];
+
+export function LiveSummary({ initial, limit, showBalance, filters = false }: { initial: Summary; limit: number; showBalance: boolean; filters?: boolean }) {
+  const [type, setType] = useState<TypeFilter>('all');
+  const [status, setStatus] = useState<StatusFilter>('all');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
   const [data, setData] = useState(initial);
   const [stale, setStale] = useState(false);
   const [now, setNow] = useState<number | null>(null);
@@ -36,6 +47,19 @@ export function LiveSummary({ initial, limit, showBalance }: { initial: Summary;
     const id = setInterval(() => setNow(Date.now()), 5_000);
     return () => clearInterval(id);
   }, []);
+
+  const fromMs = from ? Date.parse(from + 'T00:00:00Z') : null;
+  const toMs = to ? Date.parse(to + 'T23:59:59.999Z') : null;
+  const shown = data.activity.filter((a) => {
+    if (type !== 'all' && a.type !== type) return false;
+    if (status === 'pending' && a.status !== 'pending' && a.status !== 'stuck') return false;
+    if ((status === 'confirmed' || status === 'failed') && a.status !== status) return false;
+    if (fromMs !== null && a.when < fromMs) return false;
+    if (toMs !== null && a.when > toMs) return false;
+    return true;
+  });
+  const filtered = type !== 'all' || status !== 'all' || from !== '' || to !== '';
+  const clear = () => { setType('all'); setStatus('all'); setFrom(''); setTo(''); };
 
   const old = Boolean(data.balance && now !== null && now - data.balance.asOf > OLD_MS);
 
@@ -65,12 +89,52 @@ export function LiveSummary({ initial, limit, showBalance }: { initial: Summary;
       <div className="card">
         <h2>{showBalance ? 'Recent activity' : 'All activity'}</h2>
         {stale && <p className="alert alert-warn">Could not refresh. Showing the last data.</p>}
+        {filters && (
+          <>
+            <div className="chips" role="group" aria-label="Filter by type">
+              {TYPE_CHIPS.map((c) => (
+                <button key={c.value} type="button" className="chip" aria-pressed={type === c.value} onClick={() => setType(c.value)}>{c.label}</button>
+              ))}
+            </div>
+            <div className="filters">
+              <div>
+                <label htmlFor="f-status">Status</label>
+                <select id="f-status" value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)}>
+                  <option value="all">All statuses</option>
+                  <option value="pending">Pending</option>
+                  <option value="confirmed">Confirmed</option>
+                  <option value="failed">Failed</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="f-from">From (UTC date)</label>
+                <input id="f-from" type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
+              </div>
+              <div>
+                <label htmlFor="f-to">To (UTC date)</label>
+                <input id="f-to" type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
+              </div>
+            </div>
+          </>
+        )}
         {data.activity.length === 0 ? (
           <EmptyState title="No activity yet">Deposit test USDC to your wallet address and it will show up here.</EmptyState>
+        ) : shown.length === 0 ? (
+          <EmptyState title="No matching activity">
+            Nothing fits these filters in your latest {data.activity.length} items.{' '}
+            <button type="button" className="link" onClick={clear}>Clear filters</button>
+          </EmptyState>
         ) : (
-          <ul className="rows">
-            {data.activity.map((a) => <ActivityRow key={a.id} a={a} />)}
-          </ul>
+          <>
+            <ul className="rows">
+              {shown.map((a) => <ActivityRow key={a.id} a={a} />)}
+            </ul>
+            {filters && (
+              <p className="field-hint" style={{ marginTop: 12 }}>
+                Showing {shown.length}{filtered ? ` of ${data.activity.length}` : ''} of your latest {limit}. Download the CSV for everything.
+              </p>
+            )}
+          </>
         )}
         {showBalance && data.activity.length > 0 && <p style={{ margin: '12px 0 0' }}><Link href="/activity">See all activity</Link></p>}
       </div>

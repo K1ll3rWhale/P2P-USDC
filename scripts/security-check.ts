@@ -175,6 +175,35 @@ console.log('\n# Money requests (authorization; no money is moved)');
   }
 }
 
+// ------------------------------------------------------------------------------------------------ D3. settings, export, notifications
+console.log('\n# Settings, CSV export, sessions');
+{
+  const anonExport = await api(undefined, '/api/activity/export');
+  check('CSV export without a session is 401', anonExport.status === 401, `status ${anonExport.status}`);
+  const anonSettings = await fetch(BASE + '/settings', { redirect: 'manual' });
+  check('settings page requires a session', anonSettings.status === 307);
+  const exp = await fetch(BASE + '/api/activity/export?userId=' + bobId, { headers: { cookie: alice } });
+  const csv = await exp.text();
+  check('CSV export is a download with the right type', exp.status === 200 && /text\/csv/.test(exp.headers.get('content-type') ?? '') && /attachment/.test(exp.headers.get('content-disposition') ?? ''));
+  check('CSV export starts with the header row', csv.startsWith('Date (UTC),Type,Counterpart'));
+  const bobTx = db.select().from(payments).all().filter((p) => p.userId === bobId && p.txHash).map((p) => p.txHash!);
+  check("a userId query parameter cannot export another user's activity", bobTx.every((h) => !csv.includes(h)));
+  const page = await api(alice, '/settings');
+  check('settings page shows the account, password form and sessions', /Change password/.test(page.text) && /Where you are signed in/.test(page.text));
+  check('settings page never shows the password hash', !/\$argon2|password_hash/.test(page.text));
+  for (const [who, cookie] of [['alice', alice], ['bob', bob]] as const) {
+    const bad: string[] = [];
+    for (const p of ['/', '/send', '/friends', '/friends?tab=requests', '/friends?tab=money', '/activity', '/wallet', '/settings', '/no-such-page']) {
+      const r = await api(cookie, p);
+      const want = p === '/no-such-page' ? 404 : 200;
+      if (r.status !== want || /Application error|Internal Server Error/.test(r.text)) bad.push(`${p}=${r.status}`);
+    }
+    check(`every page renders for ${who} (and unknown paths are a 404)`, bad.length === 0, bad.join(' '));
+  }
+  const act = await api(alice, '/activity');
+  check('activity page has filters and the CSV download', /Download CSV/.test(act.text) && /Filter by type/.test(act.text));
+}
+
 // ------------------------------------------------------------------------------------------------ E. rate limits
 console.log('\n# Rate limits (a real count of recorded attempts is checked, not just responses)');
 const since = () => Date.now() - 15 * 60_000;
